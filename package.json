@@ -1,0 +1,33 @@
+{
+  "name": "splatsinth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "selftest": "esbuild scripts/selftest.ts --bundle --platform=node --format=esm --outfile=.tmp/selftest.mjs --log-level=warning && node .tmp/selftest.mjs",
+    "check": "npm run typecheck && npm run selftest"
+  },
+  "dependencies": {
+    "@elemaudio/core": "^4.0.1",
+    "@elemaudio/web-renderer": "^4.0.3",
+    "@monaco-editor/react": "^4.7.0",
+    "@sparkjsdev/spark": "^2.1.0",
+    "monaco-editor": "^0.52.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

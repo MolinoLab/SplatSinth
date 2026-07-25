@@ -1,0 +1,17 @@
+{
+  "demos": [
+    {
+      "id": "demo-sphere",
+      "name": "Esfera demos",
+      "kind": "procedural",
+      "generator": "sphere"
+    },
+    {
+      "id": "demo-grid",
+      "name": "Rejilla demos",
+      "kind": "procedural",
+      "generator": "grid"
+    }
+  ],
+  "files": []
+}

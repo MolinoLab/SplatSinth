@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.tmp/
+.DS_Store
+*.local
+.vite/
+
+# Los splats pesan demasiado para versionarlos
+*.ply
+*.spz
+*.splat
+*.ksplat
