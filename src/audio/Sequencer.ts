@@ -40,12 +40,6 @@ export const defaultSequencer = (): SequencerState => ({
       layerId: "hits",
       pattern: "0...3...5...7...",
     },
-    {
-      id: "t1",
-      name: "bass",
-      layerId: "hits",
-      pattern: "0.......3.......",
-    },
   ],
 });
 

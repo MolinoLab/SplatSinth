@@ -1,6 +1,6 @@
 /**
  * Entrada MIDI (cable y BLE cuando el SO lo expone vía Web MIDI).
- * Enruta notas a capas sonoras según canal.
+ * Enruta note on/off a capas sonoras según canal.
  */
 
 export type MidiNoteEvent = {
@@ -19,7 +19,14 @@ export type MidiDeviceInfo = {
   type: "cable" | "ble" | "unknown";
 };
 
-type NoteHandler = (layerHint: string | null, note: number, velocity: number, channel: number) => void;
+/** phase: on = note-on, off = note-off / velocity 0. */
+export type NoteHandler = (
+  layerHint: string | null,
+  note: number,
+  velocity: number,
+  channel: number,
+  phase: "on" | "off",
+) => void;
 
 const HISTORY = 240;
 
@@ -28,7 +35,6 @@ export class MidiHub {
   private devices: MidiDeviceInfo[] = [];
   private history: MidiNoteEvent[] = [];
   private onNote: NoteHandler | null = null;
-  /** channel 1..16 → layerId */
   private routes = new Map<number, string>();
   private defaultLayer = "hits";
 
@@ -56,6 +62,10 @@ export class MidiHub {
   route(channel: number, layerId: string): void {
     if (channel <= 0) this.defaultLayer = layerId;
     else this.routes.set(channel, layerId);
+  }
+
+  clearRoutes(): void {
+    this.routes.clear();
   }
 
   async start(): Promise<{ ok: boolean; error?: string }> {
@@ -101,6 +111,10 @@ export class MidiHub {
     }
   }
 
+  private resolveLayer(channel: number): string {
+    return this.routes.get(channel) ?? this.defaultLayer;
+  }
+
   private onMessage(event: MIDIMessageEvent, input: MIDIInput): void {
     const data = event.data;
     if (!data || data.length < 2) return;
@@ -109,27 +123,15 @@ export class MidiHub {
     const channel = (status & 0x0f) + 1;
     const note = data[1];
     const velocity = (data[2] ?? 0) / 127;
+    const device = input.name ?? input.id;
+    const layer = this.resolveLayer(channel);
 
     if (type === 0x90 && velocity > 0) {
-      this.push({
-        t: performance.now(),
-        type: "on",
-        channel,
-        note,
-        velocity,
-        device: input.name ?? input.id,
-      });
-      const layer = this.routes.get(channel) ?? this.defaultLayer;
-      this.onNote?.(layer, note, velocity, channel);
+      this.push({ t: performance.now(), type: "on", channel, note, velocity, device });
+      this.onNote?.(layer, note, velocity, channel, "on");
     } else if (type === 0x80 || (type === 0x90 && velocity === 0)) {
-      this.push({
-        t: performance.now(),
-        type: "off",
-        channel,
-        note,
-        velocity: 0,
-        device: input.name ?? input.id,
-      });
+      this.push({ t: performance.now(), type: "off", channel, note, velocity: 0, device });
+      this.onNote?.(layer, note, 0, channel, "off");
     }
   }
 

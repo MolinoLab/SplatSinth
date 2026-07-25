@@ -17,14 +17,16 @@ export const defaultBeam = (): BeamConfig => ({
   shape: "sheet",
   sweepAxis: "y",
   beamAxis: "x",
-  // Ritmo meditativo: ~25 s por recorrido completo.
-  speed: 0.04,
+  // ~6–7 s por recorrido completo a speed 0.15.
+  speed: 0.15,
   radius: 0.015,
   mode: "pingpong",
   color: "#ff2a2a",
   intensity: 2.2,
   offset: 0.5,
-  running: true,
+  enabled: true,
+  // El haz es una fuente más, no el centro del flujo DAW.
+  running: false,
 });
 
 export const defaultMapping = (): MappingConfig => ({
@@ -46,7 +48,7 @@ export const defaultMapping = (): MappingConfig => ({
 
 export const defaultScene = (): SceneConfig => ({
   view: "splats",
-  pointSize: 0.05,
+  pointSize: 0.003,
   pointOpacity: 0.9,
   pointAttenuation: 1,
   pointRound: true,

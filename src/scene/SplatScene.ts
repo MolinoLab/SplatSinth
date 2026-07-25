@@ -9,6 +9,7 @@ import { SplatLibrary, type LoadProgress } from "./SplatLibrary";
 import { CameraController } from "./CameraController";
 import { SplatEffects } from "./SplatEffects";
 import { LayerVisuals } from "./LayerVisuals";
+import { PostProcessing } from "./PostFx";
 import type { SplatSamples } from "../sonify/extract";
 import type { SoundLayer } from "../core/layers";
 
@@ -30,6 +31,7 @@ export class SplatScene {
   readonly cam: CameraController;
   readonly effects = new SplatEffects();
   readonly layerVisuals = new LayerVisuals();
+  readonly postFx: PostProcessing;
 
   private spark: SparkRenderer;
   private container: HTMLElement;
@@ -55,6 +57,7 @@ export class SplatScene {
 
     this.cam = new CameraController(this.camera, this.controls);
     this.library = new SplatLibrary(this.scene, (mesh) => this.orient(mesh));
+    this.postFx = new PostProcessing(this.renderer, this.scene, this.camera);
 
     this.spark = new SparkRenderer({ renderer: this.renderer });
     this.scene.add(this.spark);
@@ -84,6 +87,7 @@ export class SplatScene {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.postFx.resize(width, height);
   }
 
   applyConfig(config: SceneConfig): void {
@@ -174,14 +178,16 @@ export class SplatScene {
     this.layerVisuals.update(dt, layers, layerEnergy, this.effects, center);
     this.cam.tick(dt);
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    this.postFx.render();
   }
 
   dispose(): void {
     this.resizeObserver.disconnect();
     this.clear();
+    this.cam.dispose();
     this.effects.dispose();
     this.layerVisuals.dispose();
+    this.postFx.dispose();
     this.fx.dispose();
     this.points.dispose();
     this.spark.dispose();

@@ -13,15 +13,31 @@ import { CommandsPanel } from "./CommandsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { TutorialPanel } from "./TutorialPanel";
 import { PatchPanel } from "./PatchPanel";
+import { TracksPanel } from "./TracksPanel";
+import { PostFxPanel } from "./PostFxPanel";
 import { SequencerPanel } from "./SequencerPanel";
 import {
   applyUiSettings,
-  effectivePointSize,
   loadUiSettings,
   saveUiSettings,
   type UiSettings,
 } from "./settings";
 import { defaultSequencer } from "../audio/Sequencer";
+import {
+  IconAdd,
+  IconClear,
+  IconCommands,
+  IconExamples,
+  IconLoop,
+  IconPlay,
+  IconPost,
+  IconScene,
+  IconSettings,
+  IconSketch,
+  IconStop,
+  IconTracks,
+  IconTutorial,
+} from "./icons";
 
 const EditorPanel = lazy(() => import("./EditorPanel").then((m) => ({ default: m.EditorPanel })));
 
@@ -69,13 +85,14 @@ export function App() {
   );
   const [dirty, setDirty] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [beamRunning, setBeamRunning] = useState(true);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [userPresets, setUserPresets] = useState<Preset[]>(() => loadUserPresets());
   const [settings, setSettings] = useState<UiSettings>(() => loadUiSettings());
   const [flash, setFlash] = useState(false);
-  const [showSketch, setShowSketch] = useState(true);
+  const [showTracks, setShowTracks] = useState(false);
+  const [showSketch, setShowSketch] = useState(false);
   const [showPatch, setShowPatch] = useState(false);
+  const [showPost, setShowPost] = useState(false);
   const [showSeq, setShowSeq] = useState(false);
 
   const presets = useMemo(() => [...BUILTIN_PRESETS, ...userPresets], [userPresets]);
@@ -89,9 +106,8 @@ export function App() {
     if (!instance) return;
     instance.setAccentColor(settings.accent);
     instance.setView(settings.viewMode);
-    instance.setPointSize(effectivePointSize(settings));
+    instance.setPointSize(settings.pointSize);
     instance.setOutputVolume(settings.masterVolume);
-    instance.setComputerKeyboard(settings.computerKeyboard);
   }, [settings]);
 
   useEffect(() => {
@@ -103,9 +119,8 @@ export function App() {
     instance.setAccentColor(settings.accent);
     instance.applySketch(initial);
     instance.setView(settings.viewMode);
-    instance.setPointSize(effectivePointSize(settings));
+    instance.setPointSize(settings.pointSize);
     instance.setOutputVolume(settings.masterVolume);
-    instance.setComputerKeyboard(settings.computerKeyboard);
     // Los ejemplos no se cargan solos: botón «Añadir ejemplos».
     return () => {
       unsubscribe();
@@ -122,13 +137,11 @@ export function App() {
     const result = instance.applySketch(code);
     if (result.ok) {
       setDirty(false);
-      setBeamRunning(instance.beam.running);
       setProject(codeToProject(code, project));
       setSettings((s) => ({
         ...s,
         viewMode: instance.sceneConfig.view,
         pointSize: instance.sceneConfig.pointSize,
-        pointSizeMult: 1,
       }));
       setFlash(true);
       window.setTimeout(() => setFlash(false), 320);
@@ -147,15 +160,17 @@ export function App() {
       const instance = appRef.current;
       if (instance) {
         Object.assign(instance.beam, next.beam);
-        if (instance.beam.color === settings.accent || !next.beam.color) {
-          instance.setAccentColor(settings.accent);
-        }
+        if (next.beam.color) instance.setBeamColor(next.beam.color);
+        else instance.setAccentColor(settings.accent);
         Object.assign(instance.sceneConfig, next.scene);
         Object.assign(instance.effectConfig, next.effects);
+        Object.assign(instance.postFxConfig, next.postFx);
         Object.assign(instance.cameraConfig, next.camera);
         instance.scene.applyConfig(instance.sceneConfig);
         instance.scene.effects.applyConfig(instance.effectConfig);
+        instance.scene.postFx.applyConfig(instance.postFxConfig);
         instance.scene.cam.applyConfig(instance.cameraConfig);
+        instance.setPerformanceActive(next.beam.running && (next.sequencers[0]?.running ?? false));
         instance.engine.setLayers(next.layers);
       }
     },
@@ -184,14 +199,20 @@ export function App() {
     await instance.toggleAudio();
   }, []);
 
-  const audioLabel =
-    status.audio === "running"
-      ? "Audio activo"
-      : status.audio === "suspended"
-        ? "Audio en pausa"
-        : "Activar audio";
 
   const seqState = project.sequencers[0] ?? defaultSequencer();
+  const transportPlaying = project.beam.running && seqState.running;
+
+  const toggleTransport = useCallback(async () => {
+    const next = !transportPlaying;
+    await ensureAudio();
+    const nextProject: ProjectState = {
+      ...project,
+      beam: { ...project.beam, running: next },
+      sequencers: [{ ...seqState, running: next }],
+    };
+    onProjectChange(nextProject);
+  }, [ensureAudio, onProjectChange, project, seqState, transportPlaying]);
 
   return (
     <div
@@ -211,10 +232,10 @@ export function App() {
         <div className="empty">
           <h1>SplatSinth</h1>
           <p>
-            Añade tus splats o carga los ejemplos. Capas sonoras, MIDI, patch visual y
-            secuenciador ASCII van juntos.
+            DAW audiovisual: pistas, MIDI, Hold y secuenciador. El splat reacciona a tus notas; el haz
+            es solo una fuente más.
           </p>
-          <p className="hint">Arrastra un .ply/.spz o pulsa «Añadir ejemplos»</p>
+          <p className="hint">Añade ejemplos o un .ply/.spz · teclado PC o MIDI (Ajustes) · toca una pista</p>
         </div>
       )}
 
@@ -236,11 +257,20 @@ export function App() {
               e.target.value = "";
             }}
           />
-          <button className="primary" onClick={() => fileInputRef.current?.click()}>
-            Añadir splats
+          <button
+            className="primary"
+            onClick={() => fileInputRef.current?.click()}
+            title="Añadir splats"
+          >
+            <IconAdd />
+            <span className="btn-label">Splats</span>
           </button>
-          <button onClick={() => void appRef.current?.loadExamples(morphMs)}>
-            Añadir ejemplos
+          <button
+            onClick={() => void appRef.current?.loadExamples(morphMs)}
+            title="Añadir ejemplos"
+          >
+            <IconExamples />
+            <span className="btn-label">Ejemplos</span>
           </button>
           <button
             className="icon-btn"
@@ -249,7 +279,7 @@ export function App() {
             title="Vaciar biblioteca"
             aria-label="Vaciar biblioteca"
           >
-            ×
+            <IconClear />
           </button>
 
           {status.library.length > 0 && (
@@ -268,107 +298,166 @@ export function App() {
           )}
 
           <button
-            className={status.audio === "running" ? "active" : ""}
-            onClick={() => void appRef.current?.toggleAudio()}
+            className={`primary${transportPlaying ? " active" : ""}`}
+            onClick={() => void toggleTransport()}
+            title={transportPlaying ? "Parar (audio + visual)" : "Play (audio + visual)"}
           >
-            {audioLabel}
-          </button>
-
-          <button
-            className={beamRunning ? "active" : ""}
-            onClick={() => {
-              appRef.current?.toggleBeam();
-              setBeamRunning((r) => !r);
-            }}
-          >
-            {beamRunning ? "Pausar haz" : "Reanudar haz"}
+            {transportPlaying ? <IconStop /> : <IconPlay />}
+            <span className="btn-label">{transportPlaying ? "Stop" : "Play"}</span>
           </button>
 
           <span className="toolbar-sep" />
 
-          <button className={showSketch ? "active" : ""} onClick={() => setShowSketch((v) => !v)}>
-            Sketch
-          </button>
-          <button className={showPatch ? "active" : ""} onClick={() => setShowPatch((v) => !v)}>
-            Patch
-          </button>
-          <button className={showSeq ? "active" : ""} onClick={() => setShowSeq((v) => !v)}>
-            Seq
+          <button
+            className={showTracks ? "active" : ""}
+            onClick={() => setShowTracks((v) => !v)}
+            title="Tracks"
+          >
+            <IconTracks />
+            <span className="btn-label">Tracks</span>
           </button>
           <button
-            className={settings.computerKeyboard ? "active" : ""}
-            title="Teclado PC estilo Ableton (A=S do · Z/X octava · 1–4 capa)"
-            onClick={() =>
-              setSettings((s) => ({ ...s, computerKeyboard: !s.computerKeyboard }))
-            }
+            className={showSeq ? "active" : ""}
+            onClick={() => setShowSeq((v) => !v)}
+            title="Secuenciador"
           >
-            Teclado
+            <IconLoop />
+            <span className="btn-label">Sequencer</span>
           </button>
 
           <span className="toolbar-sep" />
 
-          <button onClick={() => setOverlay("tutorial")}>Tutorial</button>
-          <button onClick={() => setOverlay("commands")}>Comandos</button>
-          <button onClick={() => setOverlay("settings")}>Ajustes</button>
+          <button
+            className={showSketch ? "active" : ""}
+            onClick={() => setShowSketch((v) => !v)}
+            title="Sketch"
+          >
+            <IconSketch />
+            <span className="btn-label">Sketch</span>
+          </button>
+          <button
+            className={showPatch ? "active" : ""}
+            onClick={() => setShowPatch((v) => !v)}
+            title="Haz, efectos GPU y vista"
+          >
+            <IconScene />
+            <span className="btn-label">Escena</span>
+          </button>
+          <button
+            className={showPost ? "active" : ""}
+            onClick={() => setShowPost((v) => !v)}
+            title="Postprocesado"
+          >
+            <IconPost />
+            <span className="btn-label">Post</span>
+          </button>
+
+          <span className="toolbar-sep" />
+
+          <button onClick={() => setOverlay("tutorial")} title="Tutorial">
+            <IconTutorial />
+            <span className="btn-label">Tutorial</span>
+          </button>
+          <button onClick={() => setOverlay("commands")} title="Comandos">
+            <IconCommands />
+            <span className="btn-label">Comandos</span>
+          </button>
+          <button onClick={() => setOverlay("settings")} title="Ajustes">
+            <IconSettings />
+            <span className="btn-label">Ajustes</span>
+          </button>
         </div>
 
-        <div className={`side-panels ${showSketch && showPatch ? "both" : ""}`}>
-          {showPatch && (
-            <PatchPanel
-              project={project}
-              onChange={onProjectChange}
-              collapsed={false}
-              onToggle={() => setShowPatch(false)}
-              width={settings.patchWidth}
-              onWidthChange={(patchWidth) => setSettings((s) => ({ ...s, patchWidth }))}
-            />
-          )}
-
-          <Suspense
-            fallback={
-              <section className="panel collapsed">
-                <div className="panel-head">
-                  <span className="panel-title">Cargando editor…</span>
-                </div>
-              </section>
-            }
+        {(showTracks || showSketch || showPatch || showPost) && (
+          <div
+            className={[
+              "side-panels",
+              showSketch && (showPatch || showPost || showTracks) ? "multi" : "",
+              showSeq ? "with-seq" : "",
+              showTracks ? "with-tracks" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            {showSketch && (
-              <EditorPanel
-                value={code}
-                dirty={dirty}
-                flash={flash}
-                presets={presets}
-                width={settings.editorWidth}
-                fontSize={settings.editorFontSize}
-                onWidthChange={(editorWidth) => setSettings((s) => ({ ...s, editorWidth }))}
-                onChange={(next) => {
-                  setCode(next);
-                  setDirty(true);
-                }}
-                onApply={apply}
-                onSelectPreset={(preset) => {
-                  setCode(preset.code);
-                  setProject(codeToProject(preset.code, defaultProject()));
-                  setDirty(true);
-                }}
-                onSavePreset={(name) => setUserPresets(saveUserPreset(name, code))}
-                onDeletePreset={(id) => setUserPresets(deleteUserPreset(id))}
-                onToggleHidden={() => setShowSketch(false)}
+            <Suspense
+              fallback={
+                <section className="panel collapsed">
+                  <div className="panel-head">
+                    <span className="panel-title">Cargando editor…</span>
+                  </div>
+                </section>
+              }
+            >
+              {showSketch && (
+                <EditorPanel
+                  value={code}
+                  dirty={dirty}
+                  flash={flash}
+                  presets={presets}
+                  width={settings.editorWidth}
+                  fontSize={settings.editorFontSize}
+                  onWidthChange={(editorWidth) => setSettings((s) => ({ ...s, editorWidth }))}
+                  onChange={(next) => {
+                    setCode(next);
+                    setDirty(true);
+                  }}
+                  onApply={apply}
+                  onSelectPreset={(preset) => {
+                    setCode(preset.code);
+                    setProject(codeToProject(preset.code, defaultProject()));
+                    setDirty(true);
+                  }}
+                  onSavePreset={(name) => setUserPresets(saveUserPreset(name, code))}
+                  onDeletePreset={(id) => setUserPresets(deleteUserPreset(id))}
+                  onToggleHidden={() => setShowSketch(false)}
+                />
+              )}
+            </Suspense>
+
+            {showPatch && (
+              <PatchPanel
+                project={project}
+                onChange={onProjectChange}
+                collapsed={false}
+                onToggle={() => setShowPatch(false)}
+                width={settings.patchWidth}
+                onWidthChange={(patchWidth) => setSettings((s) => ({ ...s, patchWidth }))}
               />
             )}
-          </Suspense>
-        </div>
+
+            {showTracks && (
+              <TracksPanel
+                project={project}
+                onChange={onProjectChange}
+                width={settings.tracksWidth}
+                onWidthChange={(tracksWidth) => setSettings((s) => ({ ...s, tracksWidth }))}
+                onToggle={() => setShowTracks(false)}
+                onClearHold={(id) => appRef.current?.clearHold(id)}
+              />
+            )}
+
+            {showPost && (
+              <PostFxPanel
+                project={project}
+                onChange={onProjectChange}
+                width={settings.postWidth}
+                onWidthChange={(postWidth) => setSettings((s) => ({ ...s, postWidth }))}
+                onToggle={() => setShowPost(false)}
+              />
+            )}
+          </div>
+        )}
 
         {showSeq && (
           <div className="bottom-panels">
             <SequencerPanel
               state={seqState}
+              layers={project.layers}
               currentStep={status.seqStep}
               height={settings.seqHeight}
-              audioReady={status.audio === "running"}
+              transportPlaying={transportPlaying}
               onHeightChange={(seqHeight) => setSettings((s) => ({ ...s, seqHeight }))}
-              onEnsureAudio={ensureAudio}
+              onToggleTransport={() => void toggleTransport()}
               onChange={(next) => {
                 onProjectChange({ ...project, sequencers: [next] });
               }}
@@ -403,14 +492,14 @@ export function App() {
           <span>
             midi <b>{status.midiDevices}</b>
           </span>
-          {settings.computerKeyboard && (
-            <span className="accent-label" title="Capa / octava del teclado PC">
+          {project.layers.some((l) => l.keyboard) && (
+            <span className="accent-label" title="Pista armada / octava del teclado PC">
               keys <b>{status.keyboardLayer}</b> · C{status.keyboardOctave}
             </span>
           )}
-          {status.seqRunning && (
-            <span className="accent-label">
-              seq <b>{status.seqStep}</b>
+          {transportPlaying && (
+            <span className="accent-label" title="Transporte en marcha">
+              play <b>ON</b> · seq <b>{status.seqStep}</b>
             </span>
           )}
           <div className="meter" title="Nivel de audio">

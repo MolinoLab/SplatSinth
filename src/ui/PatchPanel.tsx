@@ -1,7 +1,5 @@
 import { useCallback } from "react";
 import type { ProjectState } from "../sketch/project";
-import { SCALE_OPTIONS, ROOT_PRESETS, midiToName } from "../core/music";
-import type { SoundLayer } from "../core/layers";
 import { clampSize, startResizeDrag } from "./resize";
 
 const MIN_WIDTH = 240;
@@ -17,8 +15,7 @@ type Props = {
 };
 
 /**
- * Interfaz visual tipo patch: nodos/bloques con sliders que editan el mismo
- * ProjectState que el sketch. Al cambiar, el código declarativo se regenera.
+ * Panel Escena: haz, efectos GPU y vista. Las pistas viven en Tracks.
  */
 export function PatchPanel({
   project,
@@ -37,11 +34,6 @@ export function PatchPanel({
     patch("scene", { ...project.scene, ...partial });
   const patchEffects = (partial: Partial<ProjectState["effects"]>) =>
     patch("effects", { ...project.effects, ...partial });
-  const patchLayer = (id: string, partial: Partial<SoundLayer>) =>
-    patch(
-      "layers",
-      project.layers.map((l) => (l.id === id ? { ...l, ...partial } : l)),
-    );
 
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -60,7 +52,7 @@ export function PatchPanel({
     return (
       <section className="panel patch-panel collapsed">
         <header className="panel-head">
-          <span className="panel-title">Patch</span>
+          <span className="panel-title">Escena</span>
           <button onClick={onToggle}>Mostrar</button>
         </header>
       </section>
@@ -71,8 +63,8 @@ export function PatchPanel({
     <section className="panel patch-panel" style={{ width }}>
       <div className="resize-handle" onPointerDown={startResize} title="Arrastra para cambiar el ancho" />
       <header className="panel-head">
-        <span className="panel-title">Patch</span>
-        <span className="hint">sincronizado con el sketch</span>
+        <span className="panel-title">Escena</span>
+        <span className="hint">haz · FX · vista</span>
         <button className="icon-btn" onClick={onToggle} title="Cerrar" aria-label="Cerrar">
           ×
         </button>
@@ -81,6 +73,14 @@ export function PatchPanel({
       <div className="patch-body">
         <div className="patch-node">
           <h4>Haz</h4>
+          <label className="patch-field inline-check">
+            <input
+              type="checkbox"
+              checked={project.beam.enabled}
+              onChange={(e) => patchBeam({ enabled: e.target.checked })}
+            />
+            Haz activo (al dar Play)
+          </label>
           <Slider
             label="speed"
             value={project.beam.speed}
@@ -106,6 +106,14 @@ export function PatchPanel({
             ]}
             onChange={(shape) => patchBeam({ shape: shape as "sheet" | "beam" })}
           />
+          <label className="patch-field">
+            <span>color</span>
+            <input
+              type="color"
+              value={project.beam.color}
+              onChange={(e) => patchBeam({ color: e.target.value })}
+            />
+          </label>
         </div>
 
         <div className="patch-node">
@@ -144,7 +152,7 @@ export function PatchPanel({
         </div>
 
         <div className="patch-node">
-          <h4>Escena</h4>
+          <h4>Vista</h4>
           <Select
             label="view"
             value={project.scene.view}
@@ -154,92 +162,17 @@ export function PatchPanel({
             ]}
             onChange={(view) => patchScene({ view: view as "splats" | "points" })}
           />
-          <Slider
-            label="pointSize"
-            value={project.scene.pointSize}
-            min={0.001}
-            max={0.5}
-            step={0.001}
-            onChange={(pointSize) => patchScene({ pointSize })}
-          />
+          {project.scene.view === "points" && (
+            <Slider
+              label="pointSize"
+              value={project.scene.pointSize}
+              min={0.001}
+              max={0.5}
+              step={0.001}
+              onChange={(pointSize) => patchScene({ pointSize })}
+            />
+          )}
         </div>
-
-        {project.layers.map((layer) => (
-          <div className="patch-node" key={layer.id}>
-            <h4>
-              <label className="inline-check">
-                <input
-                  type="checkbox"
-                  checked={layer.enabled}
-                  onChange={(e) => patchLayer(layer.id, { enabled: e.target.checked })}
-                />
-                {layer.name}
-              </label>
-              <span className="hint">{layer.kind}</span>
-            </h4>
-            <Slider
-              label="gain"
-              value={layer.gain}
-              min={0}
-              max={1}
-              step={0.02}
-              onChange={(gain) => patchLayer(layer.id, { gain })}
-            />
-            <Select
-              label="scale"
-              value={layer.scale}
-              options={SCALE_OPTIONS.map((s) => [s.id, s.label])}
-              onChange={(scale) =>
-                patchLayer(layer.id, { scale: scale as SoundLayer["scale"] })
-              }
-            />
-            <Select
-              label="root"
-              value={String(layer.root)}
-              options={ROOT_PRESETS.map((r) => [String(r.midi), `${r.label} (${midiToName(r.midi)})`])}
-              onChange={(root) => patchLayer(layer.id, { root: Number(root) })}
-            />
-            <Slider
-              label="delay"
-              value={layer.delay}
-              min={0}
-              max={1}
-              step={0.02}
-              onChange={(delay) => patchLayer(layer.id, { delay })}
-            />
-            <Slider
-              label="reverb"
-              value={layer.reverb}
-              min={0}
-              max={1}
-              step={0.02}
-              onChange={(reverb) => patchLayer(layer.id, { reverb })}
-            />
-            <Select
-              label="visual"
-              value={layer.visual}
-              options={[
-                ["none", "none"],
-                ["hits", "hits"],
-                ["rain", "rain"],
-                ["glow", "glow"],
-                ["echo", "echo"],
-                ["vibrate", "vibrate"],
-              ]}
-              onChange={(visual) =>
-                patchLayer(layer.id, { visual: visual as SoundLayer["visual"] })
-              }
-            />
-            <Slider
-              label="midi ch"
-              value={layer.midiChannel}
-              min={-1}
-              max={16}
-              step={1}
-              onChange={(midiChannel) => patchLayer(layer.id, { midiChannel })}
-            />
-          </div>
-        ))}
       </div>
     </section>
   );
@@ -263,7 +196,7 @@ function Slider({
   return (
     <label className="patch-field">
       <span>
-        {label} <b>{Number.isInteger(step) ? value : value.toFixed(2)}</b>
+        {label} <b>{Number.isInteger(step) ? value : value.toFixed(3)}</b>
       </span>
       <input
         type="range"

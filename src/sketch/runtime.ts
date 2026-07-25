@@ -11,18 +11,20 @@ import type {
   SceneConfig,
   SynthFn,
 } from "../core/types";
-import type { SoundLayer } from "../core/layers";
+import { normalizeLayer, type SoundLayer } from "../core/layers";
 import type { SequencerState } from "../audio/Sequencer";
 import { defaultSequencer } from "../audio/Sequencer";
 import { SCALES } from "../core/defaults";
 import { midiToFreq } from "../sonify/mapping";
 import { EFFECT_PRESETS } from "../scene/SplatEffects";
+import type { PostFxConfig } from "../scene/PostFx";
 
 export type StagedSketch = {
   beam: Partial<BeamConfig>;
   mapping: Partial<MappingConfig>;
   scene: Partial<SceneConfig>;
   effects: Partial<EffectConfig>;
+  postFx: Partial<PostFxConfig>;
   camera: Partial<CameraConfig>;
   library: Partial<LibraryConfig>;
   layers: SoundLayer[] | null;
@@ -61,6 +63,7 @@ export function evaluateSketch(code: string): SketchResult {
     mapping: {},
     scene: {},
     effects: {},
+    postFx: {},
     camera: {},
     library: {},
     layers: null,
@@ -93,11 +96,13 @@ export function evaluateSketch(code: string): SketchResult {
 
   const camera = (options: Partial<CameraConfig>) => Object.assign(staged.camera, options);
 
+  const postfx = (options: Partial<PostFxConfig>) => Object.assign(staged.postFx, options);
+
   const library = (options: Partial<LibraryConfig>) => Object.assign(staged.library, options);
 
   const layers = (list: SoundLayer[]) => {
     if (!Array.isArray(list)) throw new TypeError("layers() espera un array");
-    staged.layers = list;
+    staged.layers = list.map((l) => normalizeLayer(l));
   };
 
   const sequencer = (options: Partial<SequencerState> & { tracks?: SequencerState["tracks"] }) => {
@@ -147,6 +152,7 @@ export function evaluateSketch(code: string): SketchResult {
       "mapping",
       "scene",
       "effects",
+      "postfx",
       "camera",
       "library",
       "layers",
@@ -167,6 +173,7 @@ export function evaluateSketch(code: string): SketchResult {
       mapping,
       scene,
       effects,
+      postfx,
       camera,
       library,
       layers,

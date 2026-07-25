@@ -21,6 +21,8 @@ export type BeamConfig = {
   intensity: number;
   /** Desplazamiento del haz en el eje restante, 0..1. Solo para shape "beam". */
   offset: number;
+  /** Si false, el haz no sonifica aunque el transporte esté en play. */
+  enabled: boolean;
   running: boolean;
 };
 

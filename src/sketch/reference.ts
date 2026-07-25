@@ -55,7 +55,7 @@ export const BEAM_PARAMS: ApiParam[] = [
   { name: "color", type: "color", values: ["#ff2a2a", "#ff1e3c", "#00e5ff", "#7cff4f", "#ffffff"], default: "'#ff2a2a'", doc: "Color del disparador." },
   { name: "intensity", type: "número 0..12", default: "2.2", doc: "Cuánto brillan los splats que el disparador atraviesa." },
   { name: "offset", type: "número 0..1", default: "0.5", doc: "Posición del haz en el eje restante. Solo con shape 'beam'." },
-  { name: "running", type: "true | false", values: ["true", "false"], default: "true", doc: "Pone en marcha o detiene el recorrido." },
+  { name: "running", type: "true | false", values: ["true", "false"], default: "false", doc: "Haz opcional: por defecto apagado (el flujo principal es MIDI/pistas)." },
 ];
 
 export const MAPPING_PARAMS: ApiParam[] = [

@@ -111,6 +111,51 @@ body {
   border-radius: 12px;
   max-width: calc(100vw - 32px);
   flex-wrap: wrap;
+  z-index: 4;
+}
+
+.toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 7px;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+.toolbar .btn-icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.toolbar .btn-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  margin-left: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+  transition:
+    max-width 200ms ease,
+    opacity 180ms ease,
+    margin-left 200ms ease;
+}
+
+.toolbar button:hover .btn-label,
+.toolbar button:focus-visible .btn-label {
+  max-width: 12rem;
+  opacity: 1;
+  margin-left: 6px;
+}
+
+.toolbar button.icon-btn {
+  padding: 7px;
+}
+
+.toolbar button.icon-btn .btn-icon {
+  display: block;
 }
 
 .brand {
@@ -677,7 +722,7 @@ input[type="range"] {
   outline-offset: 2px;
 }
 
-/* Side panels: patch + sketch ------------------------------------------- */
+/* Side panels (derecha): sketch · escena · tracks ------------------------ */
 
 .side-panels {
   position: absolute;
@@ -685,9 +730,15 @@ input[type="range"] {
   right: 16px;
   bottom: 52px;
   display: flex;
+  flex-direction: row;
   gap: 10px;
   align-items: stretch;
   pointer-events: none;
+  z-index: 3;
+}
+
+.side-panels.with-seq {
+  bottom: calc(52px + var(--seq-height, 200px) + 12px);
 }
 
 .side-panels > * {
@@ -703,14 +754,120 @@ input[type="range"] {
   height: 100%;
 }
 
-.side-panels.both .panel:not(.patch-panel) {
+.side-panels.multi .panel:not(.patch-panel):not(.tracks-panel):not(.postfx-panel) {
   width: var(--editor-width);
 }
 
 .patch-panel {
-  width: var(--patch-width, 340px);
+  width: var(--patch-width, 320px);
   background: var(--panel);
   flex-shrink: 0;
+}
+
+.tracks-panel {
+  width: var(--tracks-width, 340px);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.postfx-panel {
+  width: var(--post-width, 280px);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.tracks-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tracks-add button {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.tracks-body {
+  overflow-y: auto;
+  padding: 8px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track-strip {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.track-strip.muted {
+  opacity: 0.55;
+}
+
+.track-strip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.track-name {
+  flex: 1;
+  min-width: 80px;
+  padding: 4px 8px !important;
+  font-weight: 600;
+}
+
+.track-strip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+.track-strip-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.track-strip-grid select {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.track-strip-grid .track-gain {
+  grid-column: 1 / -1;
+}
+
+.track-strip-grid input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.track-strip-head .track-icon-toggle {
+  padding: 4px 6px;
+  min-width: 28px;
+}
+
+.track-strip-head .track-icon-toggle.active {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.tracks-help {
+  padding: 0 12px 12px;
+  margin: 0;
+  line-height: 1.45;
 }
 
 .patch-body {
@@ -778,7 +935,8 @@ input[type="range"] {
   display: flex;
   gap: 10px;
   pointer-events: none;
-  max-width: min(920px, calc(100vw - 32px));
+  max-width: none;
+  z-index: 2;
 }
 
 .bottom-panels > * {
@@ -896,12 +1054,13 @@ input[type="range"] {
 }
 
 @media (max-width: 1100px) {
-  .side-panels.both {
+  .side-panels.multi {
     flex-direction: column;
     width: min(560px, calc(100vw - 32px));
   }
-  .side-panels.both .patch-panel,
-  .side-panels.both .panel:not(.patch-panel) {
+  .side-panels.multi .patch-panel,
+  .side-panels.multi .tracks-panel,
+  .side-panels.multi .panel:not(.patch-panel):not(.tracks-panel) {
     width: 100% !important;
     height: 45%;
   }

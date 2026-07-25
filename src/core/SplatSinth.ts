@@ -10,9 +10,11 @@ import { hitToVoice, midiToFreq } from "../sonify/mapping";
 import { SplatScene } from "../scene/SplatScene";
 import { defaultCamera, type CameraConfig } from "../scene/CameraController";
 import { defaultEffect, EFFECT_PRESETS, type EffectConfig } from "../scene/SplatEffects";
+import { defaultPostFx, type PostFxConfig } from "../scene/PostFx";
 import { evaluateSketch, validateMaster, validateSynth } from "../sketch/runtime";
 import { MAX_SONIC_POINTS, defaultBeam, defaultMapping, defaultScene } from "./defaults";
-import { defaultLayers, type SoundLayer } from "./layers";
+import { defaultLayers, normalizeLayer, type MidiVisualMode, type SoundLayer } from "./layers";
+import type { EffectType } from "../scene/SplatEffects";
 import { scaleDegreeToMidi } from "./music";
 import type {
   AnimateFn,
@@ -80,8 +82,12 @@ export class SplatSinth {
   mapping: MappingConfig = defaultMapping();
   sceneConfig: SceneConfig = defaultScene();
   effectConfig: EffectConfig = defaultEffect();
+  postFxConfig: PostFxConfig = defaultPostFx();
   cameraConfig: CameraConfig = defaultCamera();
   layers: SoundLayer[] = defaultLayers();
+
+  /** Play global: audio reactivo + animación (haz, seq, FX temporales). */
+  performanceActive = false;
 
   private samples: SplatSamples = emptySamples();
   private baked = new THREE.Matrix4();
@@ -131,6 +137,15 @@ export class SplatSinth {
   private listeners = new Set<(status: Status) => void>();
   private lastPublish = 0;
 
+  /** Notas latch por capa (hold ON). */
+  private latched = new Map<string, Set<number>>();
+  /** Impulso visual acumulado de notas MIDI/teclado. */
+  private midiImpulse = 0;
+  private midiHue = 0;
+  private midiFxType: EffectType = "pulse";
+  private midiVisualActive = false;
+  private midiVisualStrengthMul = 1;
+
   constructor(container: HTMLElement) {
     this.scene = new SplatScene(container);
     this.scene.applyConfig(this.sceneConfig);
@@ -139,35 +154,37 @@ export class SplatSinth {
     this.engine.setLayers(this.layers);
     this.engine.onError = (message) => this.patch({ error: message });
 
-    this.midi.setNoteHandler((layerId, note, velocity) => {
-      this.engine.noteOn(layerId ?? "hits", note, velocity);
+    this.midi.setNoteHandler((layerId, note, velocity, _ch, phase) => {
+      this.handlePerformanceNote(layerId ?? "hits", note, velocity, phase, "midi");
     });
     this.sequencer.setOnStep((triggers) => {
       for (const t of triggers) {
         const layer = this.layers.find((l) => l.id === t.layerId) ?? this.layers[0];
         if (!layer || !layer.enabled) continue;
         const midi = scaleDegreeToMidi(t.degree, layer.scale, layer.root);
-        this.engine.trigger(
-          {
-            freq: midiToFreq(midi),
-            amp: 0.7,
-            pan: 0.5,
-            tone: layer.tone,
-            decay: 0.28,
-          },
-          layer.id,
-          true,
-        );
+        // Capas con hold: el seq mantiene la nota un paso; el resto es one-shot.
+        if (layer.hold || layer.kind === "drone" || layer.kind === "pad") {
+          this.engine.keyDown(layer.id, midi, 0.7);
+          window.setTimeout(() => this.engine.keyUp(layer.id, midi), Math.max(80, (60 / this.sequencer.state.bpm) * 250));
+        } else {
+          this.engine.trigger(
+            {
+              freq: midiToFreq(midi),
+              amp: 0.7,
+              pan: 0.5,
+              tone: layer.tone,
+              decay: 0.28,
+            },
+            layer.id,
+            true,
+          );
+        }
+        this.pushMidiVisual(layer, midi, 0.55);
       }
     });
 
     this.keyboard.setNoteHandler((layerId, midi, velocity, down) => {
-      if (down) {
-        void this.ensureAudioForKeys();
-        this.engine.keyDown(layerId, midi, velocity);
-      } else {
-        this.engine.keyUp(layerId, midi);
-      }
+      this.handlePerformanceNote(layerId, midi, velocity, down ? "on" : "off", "keyboard");
       this.patch({
         keyboardLayer: this.keyboard.layerId,
         keyboardOctave: Math.floor(this.keyboard.baseMidi / 12) - 1,
@@ -177,6 +194,108 @@ export class SplatSinth {
 
     this.lastFrame = performance.now();
     this.raf = requestAnimationFrame(this.frame);
+  }
+
+  /**
+   * Nota desde MIDI o teclado PC.
+   * Hold ON = latch (toggle); Hold OFF = sustain al mantener la tecla.
+   */
+  private handlePerformanceNote(
+    layerId: string,
+    note: number,
+    velocity: number,
+    phase: "on" | "off",
+    source: "keyboard" | "midi" = "midi",
+  ): void {
+    if (!this.performanceActive) return;
+    const layer = this.layers.find((l) => l.id === layerId) ?? this.layers[0];
+    if (!layer || !layer.enabled) return;
+    void this.ensureAudioForKeys();
+    const chromatic = source === "keyboard";
+
+    if (phase === "on") {
+      this.pushMidiVisual(layer, note, velocity);
+      if (layer.hold) {
+        let set = this.latched.get(layer.id);
+        if (!set) {
+          set = new Set();
+          this.latched.set(layer.id, set);
+        }
+        if (set.has(note)) {
+          set.delete(note);
+          this.engine.keyUp(layer.id, note);
+        } else {
+          set.add(note);
+          this.engine.keyDown(layer.id, note, velocity, { chromatic });
+        }
+      } else {
+        this.engine.keyDown(layer.id, note, velocity, { chromatic });
+      }
+      return;
+    }
+
+    // note-off
+    if (!layer.hold) this.engine.keyUp(layer.id, note);
+  }
+
+  private pushMidiVisual(layer: SoundLayer, note: number, velocity: number): void {
+    if (layer.midiVisual === "none") return;
+    const str = Math.max(0.05, layer.midiVisualStrength ?? 0.65);
+    this.midiVisualStrengthMul = str;
+    this.midiImpulse = Math.min(
+      1.35,
+      this.midiImpulse + Math.max(0.12, velocity) * 0.55 * str,
+    );
+    this.midiHue = (note % 12) / 12;
+    this.midiFxType = midiVisualToEffect(layer.midiVisual);
+    this.midiVisualActive = true;
+
+    if (layer.visual === "echo") {
+      const c = this.scene.boundingBox().getCenter(new THREE.Vector3());
+      const ang = (note / 12) * Math.PI * 2;
+      this.scene.layerVisuals.spawnEcho(
+        c.x + Math.cos(ang) * 0.4,
+        c.y + ((note % 5) - 2) * 0.15,
+        c.z + Math.sin(ang) * 0.4,
+        0.35 + velocity * 0.5,
+      );
+    }
+  }
+
+  /** Suelta todas las notas latch de una capa (o de todas). */
+  clearHold(layerId?: string): void {
+    if (layerId) {
+      const set = this.latched.get(layerId);
+      if (!set) return;
+      for (const note of set) this.engine.keyUp(layerId, note);
+      set.clear();
+      return;
+    }
+    for (const [id, set] of this.latched) {
+      for (const note of set) this.engine.keyUp(id, note);
+      set.clear();
+    }
+  }
+
+  private tickMidiVisual(dt: number): void {
+    if (!this.midiVisualActive && this.midiImpulse <= 0.01) return;
+    if (this.midiImpulse > 0.02) {
+      this.scene.effects.applyConfig({
+        type: this.midiFxType,
+        strength: Math.min(
+          1.5,
+          (this.effectConfig.strength * 0.2 + this.midiImpulse * 0.9) * this.midiVisualStrengthMul,
+        ),
+        speed: Math.max(0.06, this.effectConfig.speed * 0.4 + this.midiImpulse * 0.25),
+        colorShift: Math.min(1, this.effectConfig.colorShift + this.midiHue * 0.35 * this.midiImpulse),
+        origin: this.effectConfig.origin,
+      });
+      this.midiImpulse *= Math.exp(-dt * 3.2);
+      return;
+    }
+    this.midiImpulse = 0;
+    this.midiVisualActive = false;
+    this.scene.effects.applyConfig(this.effectConfig);
   }
 
   private async ensureAudioForKeys(): Promise<void> {
@@ -189,18 +308,39 @@ export class SplatSinth {
     }
   }
 
-  setComputerKeyboard(enabled: boolean): void {
-    this.keyboard.setEnabled(enabled);
-    if (!enabled) this.engine.releaseAllKeys();
-    // Evita pelear WASD con el teclado musical.
-    if (enabled) this.cameraConfig.wasd = false;
-    this.scene.cam.applyConfig(this.cameraConfig);
+  /** Activa el teclado PC solo si hay una pista con `keyboard: true`. */
+  syncKeyboardArm(): void {
+    const armed = this.layers.find((l) => l.keyboard && l.enabled) ?? this.layers.find((l) => l.keyboard);
+    if (armed) {
+      this.keyboard.setLayerId(armed.id);
+      this.keyboard.setEnabled(true);
+    } else {
+      this.keyboard.setEnabled(false);
+      this.engine.releaseAllKeys();
+    }
+    this.patch({
+      keyboardLayer: this.keyboard.layerId,
+      keyboardOctave: Math.floor(this.keyboard.baseMidi / 12) - 1,
+    });
+  }
+
+  setPerformanceActive(on: boolean): void {
+    this.performanceActive = on;
+    if (!on) {
+      this.engine.panic();
+      this.scene.beam.setVisible(false);
+    }
   }
 
   /** El haz sigue el color de acento de la interfaz, salvo que el sketch lo fije. */
   setAccentColor(hex: string): void {
     this.accentColor = hex;
     if (this.beamFollowsAccent) this.beam.color = hex;
+  }
+
+  setBeamColor(hex: string): void {
+    this.beam.color = hex;
+    this.beamFollowsAccent = false;
   }
 
   async enableMidi(): Promise<void> {
@@ -213,11 +353,20 @@ export class SplatSinth {
   }
 
   setLayers(layers: SoundLayer[]): void {
-    this.layers = layers.map((l) => ({ ...l }));
+    // Solo una pista armada para teclado a la vez.
+    let seenArm = false;
+    this.layers = layers.map((l) => {
+      const n = normalizeLayer(l);
+      if (n.keyboard) {
+        if (seenArm) n.keyboard = false;
+        else seenArm = true;
+      }
+      return n;
+    });
     this.engine.setLayers(this.layers);
     this.syncMidiRoutes();
-    // Sync mapping desde capa hits.
-    const hits = this.layers.find((l) => l.id === "hits");
+    this.syncKeyboardArm();
+    const hits = this.layers.find((l) => l.kind === "hits") ?? this.layers[0];
     if (hits) {
       this.mapping.baseNote = hits.root;
       this.mapping.density = hits.density;
@@ -232,9 +381,12 @@ export class SplatSinth {
   }
 
   private syncMidiRoutes(): void {
+    this.midi.clearRoutes();
     for (const layer of this.layers) {
       if (layer.midiChannel >= 0) this.midi.route(layer.midiChannel, layer.id);
     }
+    const def = this.layers.find((l) => l.midiChannel === 0) ?? this.layers.find((l) => l.enabled);
+    if (def) this.midi.setDefaultLayer(def.id);
   }
 
   subscribe(listener: (status: Status) => void): () => void {
@@ -498,6 +650,7 @@ export class SplatSinth {
     Object.assign(this.sceneConfig, staged.scene);
     Object.assign(this.effectConfig, staged.effects);
     Object.assign(this.cameraConfig, staged.camera);
+    if (Object.keys(staged.postFx).length > 0) Object.assign(this.postFxConfig, staged.postFx);
 
     // Si el sketch fija un color distinto del acento, deja de seguir la interfaz.
     if (staged.beam.color != null && staged.beam.color !== this.accentColor) {
@@ -526,6 +679,7 @@ export class SplatSinth {
     this.engine.setLayers(this.layers);
     this.scene.applyConfig(this.sceneConfig);
     this.scene.effects.applyConfig(this.effectConfig);
+    this.scene.postFx.applyConfig(this.postFxConfig);
     this.scene.cam.applyConfig(this.cameraConfig);
     this.rebakeTransform();
 
@@ -577,6 +731,11 @@ export class SplatSinth {
 
     this.effectConfig.strength = clamp(this.effectConfig.strength, 0, 2);
     this.effectConfig.speed = clamp(this.effectConfig.speed, 0, 8);
+    this.postFxConfig.brightness = clamp(this.postFxConfig.brightness, 0.1, 3);
+    this.postFxConfig.contrast = clamp(this.postFxConfig.contrast, 0, 3);
+    this.postFxConfig.saturation = clamp(this.postFxConfig.saturation, 0, 3);
+    this.postFxConfig.bloom = clamp(this.postFxConfig.bloom, 0, 1);
+    this.postFxConfig.vignette = clamp(this.postFxConfig.vignette, 0, 1);
     this.effectConfig.colorShift = clamp(this.effectConfig.colorShift, 0, 1);
     if (!(this.effectConfig.type in EFFECT_PRESETS) && this.effectConfig.type !== "none") {
       this.effectConfig.type = "none";
@@ -636,7 +795,7 @@ export class SplatSinth {
       this.patch({ morphing: false });
     }
 
-    if (this.animateFn) {
+    if (this.animateFn && this.performanceActive) {
       try {
         this.animateFn(this.elapsed, dt, this.animateApi());
         // animate muta los objetos vivos; recuperamos lo que haya tocado antes de acotar.
@@ -652,41 +811,51 @@ export class SplatSinth {
       }
     }
 
-    this.scene.orbit(this.sceneConfig.autoRotate, dt);
-    this.sequencer.tick(dt);
+    if (this.performanceActive) {
+      this.scene.orbit(this.sceneConfig.autoRotate, dt);
+      this.sequencer.tick(dt);
+      this.tickMidiVisual(dt);
 
-    const hitsLayer = this.layers.find((l) => l.id === "hits");
-    const segments = this.trigger.advance(this.beam, dt);
-    if (!this.cloud.isEmpty && hitsLayer?.enabled !== false) {
-      const hits = this.trigger.collect(this.cloud, this.beam, this.mapping, segments, now);
-      if (hits.length > 0) {
-        if (this.engine.ready) {
-          for (const hit of hits) {
-            this.engine.trigger(
-              hitToVoice(hit, this.mapping, this.cloud, {
-                root: hitsLayer?.root ?? this.mapping.baseNote,
-                scale: hitsLayer?.scale ?? this.mapping.scale,
-              }),
-              "hits",
-            );
+      const hitsLayer = this.layers.find((l) => l.kind === "hits" && l.enabled);
+      const segments = this.trigger.advance(this.beam, dt);
+      if (!this.cloud.isEmpty && hitsLayer && this.beam.enabled && this.beam.running) {
+        const hits = this.trigger.collect(this.cloud, this.beam, this.mapping, segments, now);
+        if (hits.length > 0) {
+          if (this.engine.ready) {
+            for (const hit of hits) {
+              this.engine.trigger(
+                hitToVoice(hit, this.mapping, this.cloud, {
+                  root: hitsLayer.root,
+                  scale: hitsLayer.scale,
+                }),
+                hitsLayer.id,
+              );
+            }
+          }
+          this.scene.fx.spawn(hits, this.elapsed);
+          const echoLayer = this.layers.find((l) => l.visual === "echo" && l.enabled);
+          if (echoLayer) {
+            for (const hit of hits) {
+              this.scene.layerVisuals.spawnEcho(hit.x, hit.y, hit.z, echoLayer.delay);
+            }
           }
         }
-        this.scene.fx.spawn(hits, this.elapsed);
-        const echoLayer = this.layers.find((l) => l.visual === "echo" && l.enabled);
-        if (echoLayer) {
-          for (const hit of hits) {
-            this.scene.layerVisuals.spawnEcho(hit.x, hit.y, hit.z, echoLayer.delay);
-          }
-        }
+        this.scene.beam.update(this.cloud, this.beam, this.trigger.position);
+      } else {
+        this.scene.beam.setVisible(false);
       }
-      this.scene.beam.update(this.cloud, this.beam, this.trigger.position);
+
+      this.scene.fx.update(this.elapsed);
     } else {
       this.scene.beam.setVisible(false);
     }
 
-    this.scene.fx.update(this.elapsed);
     const stats = this.engine.stats();
-    this.scene.render(dt, this.layers, stats.layerEnergy);
+    if (this.performanceActive) {
+      this.scene.render(dt, this.layers, stats.layerEnergy);
+    } else {
+      this.scene.render(0, this.layers, {});
+    }
 
     if (now - this.lastPublish > 200) {
       this.lastPublish = now;
@@ -742,4 +911,10 @@ export class SplatSinth {
     this.engine.dispose();
     this.scene.dispose();
   }
+}
+
+function midiVisualToEffect(mode: MidiVisualMode): EffectType {
+  if (mode === "ripple") return "wave";
+  if (mode === "none") return "pulse";
+  return mode;
 }

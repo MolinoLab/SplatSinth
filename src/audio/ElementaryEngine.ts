@@ -222,10 +222,10 @@ export class ElementaryEngine {
     this.trigger(
       {
         freq: midiToFreq(quantized),
-        amp: Math.min(1, Math.max(0.05, velocity)),
+        amp: Math.min(1, Math.max(0.05, velocity * (0.45 + layer.attack * 0.55))),
         pan: 0.5,
         tone: layer.tone,
-        decay,
+        decay: decay > 0 ? decay : layer.noteDecay,
       },
       layerId,
       true,
@@ -234,30 +234,37 @@ export class ElementaryEngine {
 
   /**
    * Teclado PC: nota sostenida mientras la tecla está abajo.
-   * Cuantiza a la escala de la capa (como Ableton con scale).
+   * `chromatic`: layout A/W/S = semitonos reales (sin cuantizar a escala).
    */
-  keyDown(layerId: string, midi: number, velocity = 0.85): void {
+  keyDown(
+    layerId: string,
+    midi: number,
+    velocity = 0.85,
+    options?: { chromatic?: boolean },
+  ): void {
     if (!this.core) return;
     const layer = this.layers.find((l) => l.id === layerId);
     if (!layer || !layer.enabled) return;
     const key = `${layerId}:${midi}`;
     if (this.heldKeys.has(key)) return;
 
-    const quantized = quantizeToScale(
-      Math.min(0.999, Math.max(0, (midi - layer.root) / (12 * Math.max(1, layer.octaves)))),
-      layer.scale,
-      layer.octaves,
-      layer.root,
-    );
+    const pitch = options?.chromatic
+      ? midi
+      : quantizeToScale(
+          Math.min(0.999, Math.max(0, (midi - layer.root) / (12 * Math.max(1, layer.octaves)))),
+          layer.scale,
+          layer.octaves,
+          layer.root,
+        );
     const now = performance.now();
     const voice = this.allocate(now);
     if (!voice) return;
     voice.layerId = layerId;
-    voice.freq = midiToFreq(quantized);
-    voice.amp = Math.min(1, Math.max(0.05, velocity));
+    voice.freq = midiToFreq(pitch);
+    voice.amp = Math.min(1, Math.max(0.05, velocity * (0.45 + layer.attack * 0.55)));
     voice.pan = 0.5;
     voice.tone = layer.tone;
-    voice.decay = 0.8;
+    voice.decay = layer.noteDecay;
     voice.gate = 1;
     voice.offAt = Number.POSITIVE_INFINITY;
     voice.freeAt = Number.POSITIVE_INFINITY;
@@ -354,10 +361,20 @@ export class ElementaryEngine {
       );
     }
 
-    // Energía de capas continuas.
-    for (const layer of this.layers) {
-      if (layer.enabled && (layer.kind === "drone" || layer.kind === "pad" || layer.kind === "noise")) {
-        this.layerEnergy[layer.id] = Math.min(1, layer.gain * (layer.enabled ? 0.7 : 0));
+    // Energía sostenida solo con notas realmente en hold (no idle por estar enabled).
+    if (this.heldKeys.size > 0) {
+      const heldByLayer = new Map<string, number>();
+      for (const key of this.heldKeys.keys()) {
+        const layerId = key.split(":")[0]!;
+        heldByLayer.set(layerId, (heldByLayer.get(layerId) ?? 0) + 1);
+      }
+      for (const [layerId, count] of heldByLayer) {
+        const layer = this.layers.find((l) => l.id === layerId);
+        if (!layer?.enabled) continue;
+        this.layerEnergy[layerId] = Math.min(
+          1,
+          Math.max(this.layerEnergy[layerId] ?? 0, layer.gain * Math.min(1, 0.35 + count * 0.15)),
+        );
       }
     }
 
@@ -476,11 +493,11 @@ export class ElementaryEngine {
       rights.push(R);
     }
 
-    // Capas continuas (drone / pad / noise).
+    // Capas continuas: drone y noise siempre suenan si están ON.
+    // Pad/bass/lead/hits se tocan por MIDI, teclado o secuenciador.
     for (const layer of this.layers) {
       if (!layer.enabled) continue;
-      if (layer.kind === "hits" || layer.kind === "lead" || layer.kind === "bass") continue;
-      if (layer.kind !== "drone" && layer.kind !== "pad" && layer.kind !== "noise") continue;
+      if (layer.kind !== "drone" && layer.kind !== "noise") continue;
 
       const note = quantizeToScale(layer.droneDegree, layer.scale, layer.octaves, layer.root);
       const prefix = `layer/${layer.id}`;

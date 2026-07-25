@@ -1,12 +1,14 @@
 import type { BeamConfig, CameraConfig, MappingConfig, SceneConfig } from "../core/types";
 import type { EffectConfig } from "../scene/SplatEffects";
+import type { PostFxConfig } from "../scene/PostFx";
 import type { SoundLayer } from "../core/layers";
-import { defaultLayers } from "../core/layers";
+import { defaultLayers, normalizeLayer } from "../core/layers";
 import type { SequencerState } from "../audio/Sequencer";
 import { defaultSequencer } from "../audio/Sequencer";
 import { defaultBeam, defaultMapping, defaultScene, SCALES } from "../core/defaults";
 import { defaultCamera } from "../scene/CameraController";
 import { defaultEffect } from "../scene/SplatEffects";
+import { defaultPostFx } from "../scene/PostFx";
 import { evaluateSketch } from "./runtime";
 
 /**
@@ -19,6 +21,7 @@ export type ProjectState = {
   mapping: MappingConfig;
   scene: SceneConfig;
   effects: EffectConfig;
+  postFx: PostFxConfig;
   camera: CameraConfig;
   layers: SoundLayer[];
   sequencers: SequencerState[];
@@ -31,6 +34,7 @@ export const defaultProject = (): ProjectState => ({
   mapping: defaultMapping(),
   scene: defaultScene(),
   effects: defaultEffect(),
+  postFx: defaultPostFx(),
   camera: defaultCamera(),
   layers: defaultLayers(),
   sequencers: [defaultSequencer()],
@@ -68,6 +72,7 @@ export function projectToCode(project: ProjectState): string {
   const beam = { ...project.beam };
   const scene = { ...project.scene };
   const effects = { ...project.effects };
+  const postFx = { ...project.postFx };
   const camera = { ...project.camera };
   const mapping = {
     baseNote: project.mapping.baseNote,
@@ -90,6 +95,8 @@ export function projectToCode(project: ProjectState): string {
     scale: '${l.scale}', octaves: ${l.octaves}, tone: ${l.tone},
     droneDegree: ${l.droneDegree}, delay: ${l.delay}, reverb: ${l.reverb},
     midiChannel: ${l.midiChannel}, sequencer: '${l.sequencer}', visual: '${l.visual}',
+    hold: ${l.hold}, keyboard: ${l.keyboard}, midiVisual: '${l.midiVisual}',
+    midiVisualStrength: ${l.midiVisualStrength}, noteDecay: ${l.noteDecay}, attack: ${l.attack},
   }`;
     })
     .join(",\n");
@@ -130,6 +137,10 @@ effects({
 ${fmt(effects as unknown as Record<string, unknown>)}
 })
 
+postfx({
+${fmt(postFx as unknown as Record<string, unknown>)}
+})
+
 camera({
 ${fmt(camera as unknown as Record<string, unknown>)}
 })
@@ -161,8 +172,11 @@ export function codeToProject(code: string, previous?: ProjectState): ProjectSta
     mapping: { ...base.mapping, ...staged.mapping },
     scene: { ...base.scene, ...staged.scene },
     effects: { ...base.effects, ...staged.effects },
+    postFx: Object.keys(staged.postFx).length
+      ? { ...base.postFx, ...staged.postFx }
+      : base.postFx,
     camera: { ...base.camera, ...staged.camera },
-    layers: staged.layers?.length ? staged.layers : base.layers,
+    layers: staged.layers?.length ? staged.layers.map((l) => normalizeLayer(l)) : base.layers,
     sequencers: staged.sequencer ? [staged.sequencer] : base.sequencers,
     freeCode: extractFreeCode(code),
   };

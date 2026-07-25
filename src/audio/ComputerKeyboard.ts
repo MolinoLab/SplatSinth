@@ -4,7 +4,8 @@
  *   W E   T Y U
  * A S D F G H J K
  *
- * A = C de la octava base. Z/X bajan/suben octava. 1–4 eligen capa.
+ * A = C de la octava base. Z/X bajan/suben octava.
+ * La pista destino se arma desde Tracks (una sola a la vez).
  */
 
 export type KeyboardNoteHandler = (
@@ -30,17 +31,6 @@ const SEMITONE_KEYS: Record<string, number> = {
   KeyK: 12,
 };
 
-const LAYER_KEYS: Record<string, string> = {
-  Digit1: "hits",
-  Digit2: "drone",
-  Digit3: "pad",
-  Digit4: "noise",
-  Numpad1: "hits",
-  Numpad2: "drone",
-  Numpad3: "pad",
-  Numpad4: "noise",
-};
-
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   const tag = el.tagName;
@@ -53,8 +43,8 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export class ComputerKeyboard {
   enabled = false;
   layerId = "hits";
-  /** Octava base: C3 = 48. */
-  baseMidi = 48;
+  /** Do central (C4) en la tecla A. */
+  baseMidi = 60;
   private held = new Set<string>();
   private onNote: KeyboardNoteHandler | null = null;
   private boundDown = (e: KeyboardEvent) => this.onKeyDown(e);
@@ -62,6 +52,12 @@ export class ComputerKeyboard {
 
   setNoteHandler(handler: KeyboardNoteHandler | null): void {
     this.onNote = handler;
+  }
+
+  /** Pista armada que recibe las notas (desde Tracks). */
+  setLayerId(id: string): void {
+    if (!id) return;
+    this.layerId = id;
   }
 
   start(): void {
@@ -102,20 +98,12 @@ export class ComputerKeyboard {
       return;
     }
 
-    const layer = LAYER_KEYS[event.code];
-    if (layer) {
-      event.preventDefault();
-      this.layerId = layer;
-      return;
-    }
-
     const semitone = SEMITONE_KEYS[event.code];
     if (semitone == null) return;
     if (this.held.has(event.code)) return;
     event.preventDefault();
     this.held.add(event.code);
-    const midi = this.baseMidi + semitone;
-    this.onNote?.(this.layerId, midi, 0.85, true);
+    this.onNote?.(this.layerId, this.baseMidi + semitone, 0.85, true);
   }
 
   private onKeyUp(event: KeyboardEvent): void {

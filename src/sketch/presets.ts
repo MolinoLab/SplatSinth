@@ -22,7 +22,7 @@ beam({
   mode: 'pingpong',     // o 'loop'
   color: '#ff2a2a',
   intensity: 2.4,       // cuánto brillan los splats al ser tocados
-  running: true,
+  running: false,       // haz opcional; el flujo DAW usa MIDI / teclado / loop
 })
 
 mapping({
@@ -43,7 +43,7 @@ mapping({
 
 scene({
   background: '#05060a',
-  pointSize: 0.05,
+  pointSize: 0.003,
   autoRotate: 0.008,    // radianes por segundo, 0 para dejarla quieta
   flashSize: 1.0,
   flashDecay: 0.8,
@@ -307,18 +307,22 @@ layers([
   { id: 'hits', name: 'Hits', kind: 'hits', enabled: true, gain: 0.65, instrument: 'hits',
     root: 47, scale: 'minorPentatonic', octaves: 4, tone: 0.5, droneDegree: 0,
     delay: 0.2, reverb: 0.15, midiChannel: 1, sequencer: 'seq1', visual: 'echo',
+    hold: false, keyboard: false, midiVisual: 'pulse',
     pitchFrom: 'hue', ampFrom: 'size', density: 0.05 },
-  { id: 'drone', name: 'Drone', kind: 'drone', enabled: true, gain: 0.3, instrument: 'drone',
+  { id: 'drone', name: 'Drone', kind: 'drone', enabled: false, gain: 0.3, instrument: 'drone',
     root: 35, scale: 'minorPentatonic', octaves: 2, tone: 0.3, droneDegree: 0,
     delay: 0.1, reverb: 0.5, midiChannel: -1, sequencer: '', visual: 'vibrate',
+    hold: true, keyboard: false, midiVisual: 'whirlwind',
     pitchFrom: 'fixed', ampFrom: 'fixed', density: 0 },
-  { id: 'pad', name: 'Pad', kind: 'pad', enabled: true, gain: 0.25, instrument: 'pad',
+  { id: 'pad', name: 'Pad', kind: 'pad', enabled: false, gain: 0.25, instrument: 'pad',
     root: 48, scale: 'phrygian', octaves: 2, tone: 0.45, droneDegree: 0.3,
     delay: 0.3, reverb: 0.6, midiChannel: 2, sequencer: '', visual: 'glow',
+    hold: true, keyboard: false, midiVisual: 'wave',
     pitchFrom: 'fixed', ampFrom: 'fixed', density: 0 },
-  { id: 'noise', name: 'Noise', kind: 'noise', enabled: true, gain: 0.15, instrument: 'noise',
+  { id: 'noise', name: 'Noise', kind: 'noise', enabled: false, gain: 0.15, instrument: 'noise',
     root: 60, scale: 'chromatic', octaves: 1, tone: 0.6, droneDegree: 0.5,
     delay: 0.05, reverb: 0.25, midiChannel: -1, sequencer: '', visual: 'rain',
+    hold: false, keyboard: false, midiVisual: 'ripple',
     pitchFrom: 'fixed', ampFrom: 'fixed', density: 0 },
 ])
 

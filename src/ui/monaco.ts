@@ -332,6 +332,12 @@ monaco.languages.registerCompletionItemProvider("javascript", {
         "reverb",
         "midiChannel",
         "visual",
+        "hold",
+        "keyboard",
+        "midiVisual",
+        "midiVisualStrength",
+        "noteDecay",
+        "attack",
         "density",
       ];
       return {

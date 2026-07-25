@@ -1,33 +1,35 @@
 import { useCallback } from "react";
 import { setCell, type SequencerState } from "../audio/Sequencer";
+import type { SoundLayer } from "../core/layers";
 import { clampSize, startResizeDrag } from "./resize";
 
 type Props = {
   state: SequencerState;
+  layers: SoundLayer[];
   currentStep: number;
   height: number;
-  audioReady: boolean;
+  transportPlaying: boolean;
   onChange: (next: SequencerState) => void;
   onHeightChange: (height: number) => void;
-  onEnsureAudio: () => Promise<void>;
+  onToggleTransport: () => void;
 };
 
 const CHARS = [".", "0", "1", "2", "3", "5", "7", "*"];
-const MIN_HEIGHT = 120;
-const MAX_HEIGHT = 480;
+const MIN_HEIGHT = 140;
+const MAX_HEIGHT = 520;
 
 /**
- * Secuenciador ASCII tipo Orca: clic cicla el carácter del paso.
- * Cada celda ≠ "." dispara un grado de la escala en la capa elegida.
+ * Secuenciador ASCII por pista (clip). Cada fila → capa. + pista añade filas.
  */
 export function SequencerPanel({
   state,
+  layers,
   currentStep,
   height,
-  audioReady,
+  transportPlaying,
   onChange,
   onHeightChange,
-  onEnsureAudio,
+  onToggleTransport,
 }: Props) {
   const cycle = (trackId: string, step: number) => {
     const track = state.tracks.find((t) => t.id === trackId);
@@ -42,6 +44,28 @@ export function SequencerPanel({
     });
   };
 
+  const addTrack = () => {
+    const layerId = layers[0]?.id ?? "hits";
+    const id = `t${Date.now().toString(36)}`;
+    onChange({
+      ...state,
+      tracks: [
+        ...state.tracks,
+        {
+          id,
+          name: `clip ${state.tracks.length + 1}`,
+          layerId,
+          pattern: ".".repeat(state.steps),
+        },
+      ],
+    });
+  };
+
+  const removeTrack = (trackId: string) => {
+    if (state.tracks.length <= 1) return;
+    onChange({ ...state, tracks: state.tracks.filter((t) => t.id !== trackId) });
+  };
+
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -54,11 +78,7 @@ export function SequencerPanel({
     [onHeightChange],
   );
 
-  const togglePlay = async () => {
-    const nextRunning = !state.running;
-    if (nextRunning) await onEnsureAudio();
-    onChange({ ...state, running: nextRunning });
-  };
+  const togglePlay = () => onToggleTransport();
 
   return (
     <section className="seq-panel" style={{ height }}>
@@ -68,9 +88,9 @@ export function SequencerPanel({
         title="Arrastra para cambiar la altura"
       />
       <header className="seq-head">
-        <span className="panel-title">Seq</span>
-        <button className={state.running ? "active" : ""} onClick={() => void togglePlay()}>
-          {state.running ? "Stop" : "Play"}
+        <span className="panel-title">Sequencer</span>
+        <button className={transportPlaying ? "active" : ""} onClick={togglePlay}>
+          {transportPlaying ? "Stop" : "Play"}
         </button>
         <label className="inline-label">
           bpm
@@ -92,26 +112,28 @@ export function SequencerPanel({
             onChange={(e) => onChange({ ...state, steps: Number(e.target.value) })}
           />
         </label>
+        <button type="button" onClick={addTrack}>
+          + pista
+        </button>
         <span className="hint">
           step <b>{currentStep}</b>
         </span>
-        {!audioReady && <span className="hint warn-hint">Play enciende el audio</span>}
-        <span className="hint seq-help" title="0-9 = grado de escala · . = silencio · * = raíz">
-          0–9 grado · capa hits debe estar ON
-        </span>
+        <span className="hint seq-help">Play global · clic cicla 0–9</span>
       </header>
 
-      <div className="seq-grid" style={{ gridTemplateColumns: `72px repeat(${state.steps}, 1fr)` }}>
+      <div className="seq-grid" style={{ gridTemplateColumns: `110px repeat(${state.steps}, 1fr) 28px` }}>
         <div className="seq-corner" />
         {Array.from({ length: state.steps }, (_, i) => (
           <div key={i} className={i === currentStep ? "seq-step-h active" : "seq-step-h"}>
             {i}
           </div>
         ))}
+        <div />
         {state.tracks.map((track) => (
           <SeqRow
             key={track.id}
             track={track}
+            layers={layers}
             steps={state.steps}
             currentStep={currentStep}
             onCycle={(step) => cycle(track.id, step)}
@@ -121,6 +143,8 @@ export function SequencerPanel({
                 tracks: state.tracks.map((t) => (t.id === track.id ? { ...t, layerId } : t)),
               })
             }
+            onRemove={() => removeTrack(track.id)}
+            canRemove={state.tracks.length > 1}
           />
         ))}
       </div>
@@ -130,25 +154,32 @@ export function SequencerPanel({
 
 function SeqRow({
   track,
+  layers,
   steps,
   currentStep,
   onCycle,
   onLayer,
+  onRemove,
+  canRemove,
 }: {
   track: SequencerState["tracks"][0];
+  layers: SoundLayer[];
   steps: number;
   currentStep: number;
   onCycle: (step: number) => void;
   onLayer: (layerId: string) => void;
+  onRemove: () => void;
+  canRemove: boolean;
 }) {
   return (
     <>
       <div className="seq-track-label">
         <select value={track.layerId} onChange={(e) => onLayer(e.target.value)} title="Capa">
-          <option value="hits">hits</option>
-          <option value="drone">drone</option>
-          <option value="pad">pad</option>
-          <option value="noise">noise</option>
+          {layers.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
         </select>
       </div>
       {Array.from({ length: steps }, (_, i) => {
@@ -157,11 +188,7 @@ function SeqRow({
           <button
             key={i}
             type="button"
-            className={[
-              "seq-cell",
-              ch !== "." ? "lit" : "",
-              i === currentStep ? "playhead" : "",
-            ]
+            className={["seq-cell", ch !== "." ? "lit" : "", i === currentStep ? "playhead" : ""]
               .filter(Boolean)
               .join(" ")}
             onClick={() => onCycle(i)}
@@ -170,6 +197,15 @@ function SeqRow({
           </button>
         );
       })}
+      <button
+        type="button"
+        className="icon-btn"
+        disabled={!canRemove}
+        onClick={onRemove}
+        title="Quitar pista"
+      >
+        ×
+      </button>
     </>
   );
 }

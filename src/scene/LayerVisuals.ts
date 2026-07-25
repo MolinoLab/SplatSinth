@@ -101,8 +101,8 @@ export class LayerVisuals {
     const echoLayer = layers.find((l) => l.visual === "echo" && l.enabled);
     const vibLayer = layers.find((l) => l.visual === "vibrate" && l.enabled);
 
-    // Lluvia
-    const rainE = rainLayer ? energy[rainLayer.id] ?? rainLayer.gain : 0;
+    // Lluvia (solo con energía de notas; no por gain idle).
+    const rainE = rainLayer ? (energy[rainLayer.id] ?? 0) : 0;
     this.rainMat.opacity = rainE * 0.85;
     this.rain.visible = rainE > 0.02;
     if (this.rain.visible) {
@@ -118,30 +118,32 @@ export class LayerVisuals {
     }
 
     // Glow reverb
-    const glowE = glowLayer ? energy[glowLayer.id] ?? glowLayer.gain * glowLayer.reverb : 0;
+    const glowE = glowLayer ? (energy[glowLayer.id] ?? 0) : 0;
     const glowMat = this.glow.material as THREE.MeshBasicMaterial;
     glowMat.opacity = glowE * 0.18;
     this.glow.visible = glowE > 0.05;
     this.glow.position.copy(center);
     this.glow.scale.setScalar(1.5 + glowE * 2);
 
-    // Echo trails
+    // Echo trails (solo si hay partículas vivas; no por delay idle).
+    let echoAlive = 0;
+    for (let i = 0; i < MAX_ECHO; i++) {
+      if (this.echoLife[i] > 0) {
+        this.echoLife[i] -= dt;
+        this.echoPos[i * 3 + 1] += dt * 0.15;
+        if (this.echoLife[i] > 0) echoAlive++;
+      }
+    }
     const echoE = echoLayer ? echoLayer.delay : 0;
     this.echoMat.opacity = Math.min(0.9, echoE * 0.8 + 0.1);
-    this.echo.visible = echoE > 0.05;
-    if (this.echo.visible) {
-      for (let i = 0; i < MAX_ECHO; i++) {
-        if (this.echoLife[i] > 0) {
-          this.echoLife[i] -= dt;
-          this.echoPos[i * 3 + 1] += dt * 0.15;
-        }
-      }
+    this.echo.visible = echoAlive > 0 && echoE > 0.05;
+    if (echoAlive > 0) {
       (this.echo.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
     }
 
-    // Vibración de drone → empuja efecto pulse
+    // Vibración de drone → empuja efecto pulse solo con energía real (notas).
     if (vibLayer) {
-      const e = energy[vibLayer.id] ?? vibLayer.gain;
+      const e = energy[vibLayer.id] ?? 0;
       if (e > 0.05) {
         const cfg = effects.config;
         if (cfg.type === "none" || cfg.type === "pulse" || cfg.type === "wave") {

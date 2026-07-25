@@ -13,7 +13,7 @@ export type CameraPose = {
 export type CameraConfig = {
   mode: CameraMode;
   moveSpeed: number;
-  /** Si true, WASD mueve la cámara; en orbit el ratón sigue activo. */
+  /** Teclado numérico (pad) mueve la cámara; no usa WASD (reservado al teclado musical). */
   wasd: boolean;
 };
 
@@ -34,11 +34,20 @@ export const defaultCamera = (): CameraConfig => ({
 
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
+/** Teclas del pad numérico → movimiento de cámara. */
+const NUMPAD_DOWN = new Set([
+  "Numpad8",
+  "Numpad2",
+  "Numpad4",
+  "Numpad6",
+  "Numpad9",
+  "Numpad3",
+  "NumpadAdd",
+  "NumpadSubtract",
+]);
+
 /**
- * Cámara con orbit, WASD, presets, grabación y transiciones.
- *
- * En modo fps, OrbitControls se desactiva y FpsMovement mueve la cámara.
- * En orbit, WASD desplaza el target y la posición a la vez, sin pelear con el ratón.
+ * Cámara con orbit, pad numérico, presets, grabación y transiciones.
  */
 export class CameraController {
   config: CameraConfig = defaultCamera();
@@ -47,6 +56,9 @@ export class CameraController {
   private fps: FpsMovement;
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
+  private numpadHeld = new Set<string>();
+  private boundKeyDown = (e: KeyboardEvent) => this.onKey(e, true);
+  private boundKeyUp = (e: KeyboardEvent) => this.onKey(e, false);
 
   private transition: {
     from: CameraPose;
@@ -66,13 +78,36 @@ export class CameraController {
     this.controls = controls;
     this.fps = new FpsMovement({ moveSpeed: this.config.moveSpeed });
     this.loadPresets();
+    window.addEventListener("keydown", this.boundKeyDown);
+    window.addEventListener("keyup", this.boundKeyUp);
+  }
+
+  dispose(): void {
+    window.removeEventListener("keydown", this.boundKeyDown);
+    window.removeEventListener("keyup", this.boundKeyUp);
   }
 
   applyConfig(config: Partial<CameraConfig>): void {
     Object.assign(this.config, config);
     this.fps.moveSpeed = this.config.moveSpeed;
-    this.fps.enable = this.config.mode === "fps" && this.config.wasd;
+    this.fps.enable = false;
     this.controls.enabled = this.config.mode === "orbit";
+  }
+
+  private onKey(event: KeyboardEvent, down: boolean): void {
+    if (!NUMPAD_DOWN.has(event.code)) return;
+    if (down) this.numpadHeld.add(event.code);
+    else this.numpadHeld.delete(event.code);
+  }
+
+  private navAxes(): { forward: number; right: number; up: number } {
+    const h = this.numpadHeld;
+    const forward = (h.has("Numpad8") ? 1 : 0) - (h.has("Numpad2") ? 1 : 0);
+    const right = (h.has("Numpad6") ? 1 : 0) - (h.has("Numpad4") ? 1 : 0);
+    const up =
+      (h.has("Numpad9") || h.has("NumpadAdd") ? 1 : 0) -
+      (h.has("Numpad3") || h.has("NumpadSubtract") ? 1 : 0);
+    return { forward, right, up };
   }
 
   private poseNow(): CameraPose {
@@ -143,7 +178,6 @@ export class CameraController {
     return this.recordBuffer.slice();
   }
 
-  /** Reproduce la grabación actual, o un buffer pasado. */
   play(frames?: CameraKeyframe[]): void {
     const buffer = frames ?? this.recordBuffer;
     if (buffer.length < 2) return;
@@ -156,15 +190,12 @@ export class CameraController {
     this.playing = null;
   }
 
-  /** Desplaza con WASD en modo orbit (el target viaja con la cámara). */
-  private orbitWasd(dt: number): void {
+  /** Movimiento con pad numérico en modo orbit. */
+  private orbitNumpad(dt: number): void {
     if (!this.config.wasd || this.config.mode !== "orbit") return;
     if (this.transition || this.playing) return;
 
-    const keys = this.fps.keycode;
-    const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
-    const right = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-    const up = (keys.KeyE ? 1 : 0) - (keys.KeyQ ? 1 : 0);
+    const { forward, right, up } = this.navAxes();
     if (forward === 0 && right === 0 && up === 0) return;
 
     const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
@@ -182,13 +213,32 @@ export class CameraController {
     this.controls.target.add(move);
   }
 
+  /** Movimiento FPS con pad numérico. */
+  private fpsNumpad(dt: number): void {
+    const { forward, right, up } = this.navAxes();
+    if (forward === 0 && right === 0 && up === 0) return;
+
+    const forwardVec = new THREE.Vector3();
+    this.camera.getWorldDirection(forwardVec);
+    const side = new THREE.Vector3().crossVectors(forwardVec, this.camera.up).normalize();
+    const move = new THREE.Vector3()
+      .addScaledVector(forwardVec, forward)
+      .addScaledVector(side, right)
+      .addScaledVector(this.camera.up, up)
+      .multiplyScalar(this.config.moveSpeed * dt);
+
+    this.camera.position.add(move);
+    const look = new THREE.Vector3();
+    this.camera.getWorldDirection(look);
+    this.controls.target.copy(this.camera.position).addScaledVector(look, 2);
+  }
+
   private typing(): boolean {
     const el = document.activeElement as HTMLElement | null;
     if (!el) return false;
     const tag = el.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
     if (el.isContentEditable) return true;
-    // Monaco y otros editores marcan el rol o la clase.
     if (el.closest(".monaco-editor, .panel-editor, [role='textbox']")) return true;
     return false;
   }
@@ -253,17 +303,12 @@ export class CameraController {
       return;
     }
 
-    // Mientras escribes en el editor, WASD no mueve la cámara.
-    if (this.typing()) return;
+    if (this.typing() || !this.config.wasd) return;
 
-    if (this.config.mode === "fps" && this.config.wasd) {
-      this.fps.update(dt, this.camera);
-      // El target sigue delante de la cámara para que un cambio a orbit no salte.
-      const forward = new THREE.Vector3();
-      this.camera.getWorldDirection(forward);
-      this.controls.target.copy(this.camera.position).addScaledVector(forward, 2);
+    if (this.config.mode === "fps") {
+      this.fpsNumpad(dt);
     } else {
-      this.orbitWasd(dt);
+      this.orbitNumpad(dt);
     }
   }
 

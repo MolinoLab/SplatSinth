@@ -9,24 +9,24 @@ export type UiSettings = {
   /** Ancho del panel del sketch en píxeles. */
   editorWidth: number;
   editorFontSize: number;
-  /** Ancho del panel patch. */
+  /** Ancho del panel Escena (patch). */
   patchWidth: number;
+  /** Ancho del panel Tracks (independiente de Escena). */
+  tracksWidth: number;
+  /** Ancho del panel Post. */
+  postWidth: number;
   /** Altura del panel del secuenciador. */
   seqHeight: number;
   /** Modo de visualización: lo controla Ajustes, no la toolbar. */
   viewMode: ViewMode;
-  /** Tamaño base de los puntos en modo nube. */
+  /** Tamaño de los puntos en modo nube. */
   pointSize: number;
-  /** Multiplicador del tamaño de punto (permite valores muy pequeños). */
-  pointSizeMult: number;
   /** Volumen de salida general 0..1 (slider de la barra inferior). */
   masterVolume: number;
   /** Duración del morph al cambiar de splat. */
   morphDuration: number;
   /** Si false, los cambios de splat son instantáneos (duration 0). */
   morphEnabled: boolean;
-  /** Teclado del PC como teclado Ableton. */
-  computerKeyboard: boolean;
 };
 
 const COOKIE_KEY = "splatsinth.ui";
@@ -38,22 +38,28 @@ export const defaultUiSettings = (): UiSettings => ({
   panelOpacity: 0.5,
   editorWidth: 560,
   editorFontSize: 12.5,
-  patchWidth: 340,
+  patchWidth: 320,
+  tracksWidth: 340,
+  postWidth: 280,
   seqHeight: 200,
   viewMode: "splats",
-  pointSize: 0.05,
-  pointSizeMult: 1,
+  pointSize: 0.003,
   masterVolume: 0.7,
   morphDuration: 2,
   morphEnabled: false,
-  computerKeyboard: false,
 });
 
 export function loadUiSettings(): UiSettings {
   const defaults = defaultUiSettings();
   try {
     const fromCookie = readJsonCookie<Partial<UiSettings>>(COOKIE_KEY);
-    if (fromCookie) return { ...defaults, ...fromCookie };
+    if (fromCookie) {
+      const { pointSizeMult: _m, computerKeyboard: _k, ...rest } = fromCookie as Partial<UiSettings> & {
+        pointSizeMult?: number;
+        computerKeyboard?: boolean;
+      };
+      return { ...defaults, ...rest };
+    }
 
     const raw = localStorage.getItem(LEGACY_KEY);
     if (!raw) return defaults;
@@ -76,12 +82,11 @@ export function saveUiSettings(settings: UiSettings): void {
 }
 
 /**
- * Slider logarítmico de tamaño de punto: el centro (t=0.5) es 0.05.
- * Rango base: 0.005 … 0.25. El multiplicador puede bajarlo aún más.
+ * Slider logarítmico de tamaño de punto: el centro (t=0.5) ≈ 0.02.
+ * Rango: 0.001 … 0.25.
  */
-export const POINT_SIZE_MIN = 0.005;
+export const POINT_SIZE_MIN = 0.001;
 export const POINT_SIZE_MAX = 0.25;
-export const POINT_SIZE_MULTS = [0.1, 0.25, 0.5, 1, 2] as const;
 
 export function pointSizeToSlider(size: number): number {
   const lo = Math.log(POINT_SIZE_MIN);
@@ -94,11 +99,6 @@ export function sliderToPointSize(t: number): number {
   const lo = Math.log(POINT_SIZE_MIN);
   const hi = Math.log(POINT_SIZE_MAX);
   return Math.exp(lo + Math.min(1, Math.max(0, t)) * (hi - lo));
-}
-
-/** Tamaño efectivo dibujado = base × multiplicador. */
-export function effectivePointSize(settings: Pick<UiSettings, "pointSize" | "pointSizeMult">): number {
-  return Math.max(0.0005, settings.pointSize * settings.pointSizeMult);
 }
 
 function toRgb(hex: string): [number, number, number] {
@@ -131,6 +131,8 @@ export function applyUiSettings(settings: UiSettings): void {
   root.setProperty("--panel-alpha", String(settings.panelOpacity));
   root.setProperty("--editor-width", `${settings.editorWidth}px`);
   root.setProperty("--patch-width", `${settings.patchWidth}px`);
+  root.setProperty("--tracks-width", `${settings.tracksWidth}px`);
+  root.setProperty("--post-width", `${settings.postWidth}px`);
   root.setProperty("--seq-height", `${settings.seqHeight}px`);
 }
 

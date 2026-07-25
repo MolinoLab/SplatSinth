@@ -194,7 +194,7 @@ section("Nube sónica");
 section("Disparador");
 {
   const cloud = fakeCloud();
-  const beam: BeamConfig = { ...defaultBeam(), speed: 0.5, mode: "pingpong" };
+  const beam: BeamConfig = { ...defaultBeam(), speed: 0.5, mode: "pingpong", running: true };
   const mapping: MappingConfig = { ...defaultMapping(), density: 1, retriggerMs: 0, maxTriggersPerTick: 1e9 };
   const trigger = new BeamTrigger();
 
