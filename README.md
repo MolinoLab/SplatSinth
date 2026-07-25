@@ -4,14 +4,49 @@ Entorno web de live coding audiovisual sobre Gaussian Splats. Cargas uno o vario
 
 Todo ocurre en el navegador. No hay servidor de audio, ni backend, ni subida de archivos: los splats se procesan en la máquina del usuario y el build es estático.
 
-## Puesta en marcha
+## Puesta en marcha (probar en local)
+
+Necesitas **Node.js 20+**. En la raíz del repo:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abre `http://localhost:5173`, pulsa **Cargar splats** (o arrastra un archivo sobre la ventana) y luego **Activar audio**. El navegador exige un gesto del usuario antes de abrir el `AudioContext`, de ahí el botón.
+Vite imprime la URL (normalmente `http://localhost:5173`). Ábrela en el navegador.
+
+1. Elige una **demo** del desplegable de biblioteca (esfera/rejilla) o pulsa **Añadir splats** / arrastra un `.ply` / `.spz`.
+2. Pulsa **Activar audio** (el navegador exige un gesto antes de abrir el `AudioContext`).
+3. El haz recorre el splat: cada gaussiana que toca suena.
+4. Edita el sketch a la derecha y pulsa **Aplicar** o **Ctrl+Enter**.
+
+Otros comandos npm:
+
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo con hot reload |
+| `npm run build` | Typecheck + build de producción en `dist/` |
+| `npm run preview` | Sirve el `dist/` localmente (como en el VPS) |
+| `npm run check` | Typecheck + batería de tests sin navegador |
+
+## Tutorial: cómo empezar
+
+1. **Carga un splat** — *Añadir splats*, arrastra un archivo, o usa las demos precargadas. Formatos: `.ply`, `.spz`, `.splat`, `.ksplat`, `.sog`. Nada se sube a un servidor: se procesa en tu máquina. Un `.ply` enorme tarda; conviene convertirlo a `.spz`.
+2. **Enciende el audio** — *Activar audio*. A partir de ahí el haz recorre el splat y las gaussianas suenan.
+3. **Qué estás oyendo** — No suenan todos los puntos: se conservan los más presentes y solo suena la proporción de `density`. El **color** decide la altura, el **tamaño** el cuerpo y la duración, la **posición** el estéreo.
+4. **Toca el código** — En el sketch cambia `speed` a `0.3` y pulsa **Ctrl+Enter**. Nada se aplica hasta que lo pides. Dentro de `beam(` o `mapping(`, **espacio** abre las opciones.
+5. **Presets** — En el desplegable hay presets *sonoros* y *visuales*. *Guardar* guarda el sketch actual en este navegador.
+6. **Vista, efectos, cámara** — En *Ajustes*: splats vs nube de puntos y tamaño de punto. En el sketch: `effects('whirlwind')`, `camera({ mode: 'fps' })` (WASD), `morph({ to: 1, duration: 2 })`.
+
+### Si algo va mal
+
+| Problema | Qué probar |
+|---|---|
+| El splat sale boca abajo | `scene({ flip: false })` y Aplicar |
+| No se oye nada | Audio activo y `density` > 0 |
+| Suena a barullo | Baja `density`, sube `retriggerMs` o reduce `maxTriggersPerTick` |
+| Va a tirones | Baja `maxVoices` o simplifica el `synth`; mira `dsp` en la barra |
+| Satura | Baja `gain` en `mapping` o el factor final del synth |
 
 ## Cómo está montado
 
@@ -49,16 +84,52 @@ El disparador no busca puntos cercanos: detecta **cruces**. Cada frame calcula e
 
 Sobre eso hay tres frenos, porque una lámina cruzando un splat denso puede tocar miles de puntos a la vez: `density` (qué proporción llega a sonar), `retriggerMs` (cuánto tarda un punto en rearmarse) y `maxTriggersPerTick` (tope duro por frame).
 
-## El editor
+## Comandos del sketch
 
-Escribes libremente y **nada se aplica hasta que pulsas Aplicar o Ctrl+Enter**. El sketch no muta el estado en vivo: rellena un borrador que se valida entero antes de sustituir la configuración. Si el código falla, lo que estaba sonando sigue intacto y el error aparece en la barra inferior.
+Fuente canónica: [src/sketch/reference.ts](src/sketch/reference.ts) (también el botón *Comandos* de la UI y el autocompletado con espacio). Nada se aplica hasta **Aplicar** / **Ctrl+Enter**.
+
+### Funciones
+
+| Comando | Qué hace |
+|---|---|
+| `beam({ ... })` | Disparador: forma, eje, velocidad, radio, color, pingpong/loop |
+| `mapping({ ... })` | Mapeo splat → sonido: escala, densidad, voces, gain… |
+| `scene({ ... })` | Vista (`splats` / `points`), fondo, flip, tamaño de puntos… |
+| `effects({ ... })` o `effects('whirlwind')` | Deformación GPU: implosion, explosion, gravity, melt, whirlwind, pulse, wave |
+| `camera({ ... })` | `orbit` o `fps` (WASD), velocidad |
+| `camPreset(name, { position, target })` | Guarda un enfoque de cámara |
+| `camGo(name, duration)` | Transición a ese enfoque |
+| `library({ active, morphDuration })` | Splat activo de la biblioteca |
+| `morph({ to, duration })` | Crossfade a otro splat del array |
+| `layers([ ... ])` | Capas sonoras: hits, drone, pad, noise (escala, raíz, delay, reverb, visual, MIDI) |
+| `sequencer({ steps, bpm, tracks })` | Secuenciador ASCII tipo Orca enrutado a capas |
+| `synth((el, v) => …)` | Voz de Elementary (capa hits) |
+| `master((el, L, R) => [L, R])` | Cadena final estéreo |
+| `animate((t, dt, api) => …)` | Cada frame: `api.beam`, `api.cam`, `api.effects`, `api.library`, `api.morphTo`… |
+| `log(...)` | Mensaje en la barra de estado al aplicar |
+
+### Parámetros habituales
+
+**beam** — `shape` (`sheet` \| `beam`), `sweepAxis` / `beamAxis` (`x`\|`y`\|`z`), `speed`, `radius`, `mode` (`pingpong`\|`loop`), `color`, `intensity`, `offset`, `running`
+
+**mapping** — `baseNote`, `scale` (p. ej. `util.scales.minorPentatonic`), `octaves`, `pitchFrom` / `ampFrom` / `toneFrom` / `panFrom` / `decayFrom` (`hue`, `sat`, `lum`, `size`, `opacity`, `x`, `y`, `z`, `fixed`), `decay`, `gain`, `density`, `maxVoices`, `retriggerMs`, `maxTriggersPerTick`
+
+**scene** — `view`, `pointSize`, `pointOpacity`, `pointAttenuation`, `pointRound`, `background`, `autoRotate`, `exposure`, `flashSize`, `flashDecay`, `flip`, `splatScale`
+
+**effects** — `type`, `strength`, `speed`, `colorShift`, `origin`
+
+**camera** — `mode`, `moveSpeed`, `wasd`
+
+**layers** (por capa) — `id`, `kind`, `enabled`, `gain`, `instrument`, `root` (MIDI), `scale` (`minorPentatonic`, `phrygian`, `chromatic`…), `delay`, `reverb`, `midiChannel`, `visual` (`hits`, `rain`, `glow`, `echo`, `vibrate`)
+
+### Ejemplo mínimo
 
 ```js
-beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.09, radius: 0.012, color: '#ff2a2a' })
+beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.09, radius: 0.012 })
 
 mapping({ baseNote: 36, scale: util.scales.minorPentatonic, pitchFrom: 'hue', density: 0.05 })
 
-scene({ background: '#05060a', autoRotate: 0.02 })
+scene({ view: 'splats', background: '#05060a' })
 
 synth((el, v) => {
   const env = el.adsr(0.003, v.decay, 0, el.mul(v.decay, 1.2), v.gate)
@@ -66,31 +137,19 @@ synth((el, v) => {
 })
 
 master((el, L, R) => [L, R])
-
-animate((t, dt, api) => {
-  api.beam.offset = 0.5 + 0.4 * Math.sin(t * 0.2)
-})
 ```
 
-`synth` recibe los parámetros de la voz como nodos: `v.gate`, `v.freq`, `v.amp`, `v.pan`, `v.tone`, `v.decay`. Si devuelves una señal mono, el motor la panea solo; si devuelves `[izquierda, derecha]`, mandas tú.
+`synth` recibe `v.gate`, `v.freq`, `v.amp`, `v.pan`, `v.tone`, `v.decay`. Mono se panea solo; `[L, R]` lo controlas tú.
 
-**Los nodos con estado necesitan clave por voz.** `el.noise()`, `el.delay()`, `el.rand()` y `el.phasor()` sin clave tendrían el mismo hash en las 32 voces y compartirían instancia. Para eso está `v.k()`:
-
-```js
-el.noise({ key: v.k('ruido') })
-```
-
-Dentro de `beam(`, `mapping(` o `scene(`, **pulsar espacio abre la lista de opciones** con sus valores admitidos y sus valores por defecto. Sale de [src/sketch/reference.ts](src/sketch/reference.ts), que es también lo que muestra el botón *Comandos*: documentar una opción nueva ahí la deja documentada en los dos sitios, y `npm run selftest` comprueba que no se desincronice de la configuración real.
+**Nodos con estado** (`noise`, `delay`, `rand`, `phasor`) necesitan clave por voz: `el.noise({ key: v.k('ruido') })`.
 
 ### Presets
 
-El desplegable del panel trae tres puntos de partida: campanas de color, drone sostenido y haz granular. El botón *Guardar* añade el sketch actual como preset propio, guardado en el navegador. Guardar con un nombre que ya existe lo reemplaza.
+Desplegable del sketch: grupo **Sonoros** (campanas, drone, granular, capas+seq) y **Visuales** (torbellino, morph). *Guardar* persiste el sketch en este navegador.
 
 ## Los dos modos de visualización
 
-El botón *Ver puntos* cambia entre las gaussianas completas y una nube que usa **solo posición y color**. El tamaño y la opacidad se descartan al dibujar, pero siguen alimentando al sintetizador igual que antes. El modo también se fija desde el sketch con `scene({ view: 'points' })`, junto con `pointSize`, `pointOpacity`, `pointAttenuation` y `pointRound`.
-
-La nube sale del mismo muestreo que la sonificación, así que cambiar de modo no vuelve a recorrer el archivo. Cambiar `flip` o `splatScale` tampoco: las muestras llevan horneada su transformación y solo se les aplica la diferencia.
+En *Ajustes* (o con `scene({ view: 'points' })`) eliges gaussianas o nube de **solo posición y color**. El tamaño/opacidad no se dibujan pero siguen alimentando al sinte. `pointSize` por defecto es pequeño (~0.33).
 
 ## Formatos
 
