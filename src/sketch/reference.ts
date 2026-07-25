@@ -43,7 +43,7 @@ export const BEAM_PARAMS: ApiParam[] = [
     default: "'x'",
     doc: "Orientación del cilindro. Solo se usa con shape 'beam'.",
   },
-  { name: "speed", type: "número", default: "0.12", doc: "Recorridos completos por segundo. 0 lo deja quieto." },
+  { name: "speed", type: "número", default: "0.04", doc: "Recorridos completos por segundo. Por defecto lento (meditativo)." },
   { name: "radius", type: "número 0..0.5", default: "0.015", doc: "Grosor de la lámina o radio del haz, relativo al tamaño de la escena." },
   {
     name: "mode",
@@ -60,7 +60,24 @@ export const BEAM_PARAMS: ApiParam[] = [
 
 export const MAPPING_PARAMS: ApiParam[] = [
   { name: "baseNote", type: "nota MIDI 0..108", default: "36", doc: "Nota de referencia del registro grave." },
-  { name: "scale", type: "array de semitonos", values: ["util.scales.minorPentatonic", "util.scales.hirajoshi", "util.scales.dorian", "util.scales.major", "util.scales.minor", "util.scales.whole"], default: "minorPentatonic", doc: "Grados de la escala dentro de la octava." },
+  {
+    name: "scale",
+    type: "array de semitonos",
+    values: [
+      "util.scales.minorPentatonic",
+      "util.scales.pentatonic",
+      "util.scales.major",
+      "util.scales.minor",
+      "util.scales.dorian",
+      "util.scales.phrygian",
+      "util.scales.lydian",
+      "util.scales.hirajoshi",
+      "util.scales.whole",
+      "util.scales.chromatic",
+    ],
+    default: "util.scales.minorPentatonic",
+    doc: "Grados de la escala dentro de la octava. Autocompletado: util.scales.*",
+  },
   { name: "octaves", type: "entero 1..8", default: "4", doc: "Octavas que abarca el mapeo de altura." },
   { name: "pitchFrom", type: "campo", values: FIELDS, default: "'hue'", doc: "Qué propiedad de la gaussiana decide la altura." },
   { name: "ampFrom", type: "campo", values: FIELDS, default: "'size'", doc: "Qué propiedad decide la intensidad." },
@@ -69,10 +86,10 @@ export const MAPPING_PARAMS: ApiParam[] = [
   { name: "decayFrom", type: "campo", values: FIELDS, default: "'size'", doc: "Qué propiedad decide la duración." },
   { name: "decay", type: "[corto, largo] en segundos", default: "[0.25, 3.2]", doc: "Rango de duración de las voces." },
   { name: "gain", type: "número 0..1", default: "0.7", doc: "Ganancia general de la salida." },
-  { name: "density", type: "número 0..1", default: "0.06", doc: "Proporción de puntos que llega a sonar. Es el freno principal." },
+  { name: "density", type: "número 0..1", default: "0.03", doc: "Proporción de puntos que llega a sonar. Es el freno principal." },
   { name: "maxVoices", type: "entero 1..96", default: "32", doc: "Voces simultáneas. Cuantas más, más cuesta cada reconciliación." },
-  { name: "retriggerMs", type: "milisegundos", default: "900", doc: "Tiempo que tarda un punto en poder volver a sonar." },
-  { name: "maxTriggersPerTick", type: "entero 1..32", default: "6", doc: "Tope duro de disparos por frame." },
+  { name: "retriggerMs", type: "milisegundos", default: "1600", doc: "Tiempo que tarda un punto en poder volver a sonar." },
+  { name: "maxTriggersPerTick", type: "entero 1..32", default: "3", doc: "Tope duro de disparos por frame." },
 ];
 
 export const SCENE_PARAMS: ApiParam[] = [
@@ -83,7 +100,7 @@ export const SCENE_PARAMS: ApiParam[] = [
     default: "'splats'",
     doc: "Gaussianas completas, o nube de puntos con solo posición y color.",
   },
-  { name: "pointSize", type: "píxeles 0.05..32", default: "0.33", doc: "Tamaño de cada punto en el modo nube. También en Ajustes." },
+  { name: "pointSize", type: "píxeles 0.01..0.25", default: "0.05", doc: "Tamaño de cada punto en el modo nube. Centro del slider en Ajustes." },
   { name: "pointOpacity", type: "número 0..1", default: "0.9", doc: "Opacidad de los puntos." },
   { name: "pointAttenuation", type: "número 0..1", default: "1", doc: "0 deja todos los puntos iguales, 1 los encoge con la distancia." },
   { name: "pointRound", type: "true | false", values: ["true", "false"], default: "true", doc: "Puntos redondos o cuadrados." },
@@ -104,8 +121,8 @@ export const EFFECT_PARAMS: ApiParam[] = [
     default: "'none'",
     doc: "Deformación GPU. También effects('whirlwind') o util.effects.whirlwind.",
   },
-  { name: "strength", type: "número 0..2", default: "0.5", doc: "Intensidad del efecto." },
-  { name: "speed", type: "número", default: "1", doc: "Velocidad temporal." },
+  { name: "strength", type: "número 0..2", default: "0.45", doc: "Intensidad del efecto." },
+  { name: "speed", type: "número", default: "0.22", doc: "Velocidad temporal (baja = meditativo)." },
   { name: "colorShift", type: "número 0..1", default: "0", doc: "Rotación de tono del color." },
   { name: "origin", type: "[x,y,z]", default: "[0,0,0]", doc: "Centro del efecto en coordenadas de objeto." },
 ];
@@ -140,7 +157,7 @@ export const API: ApiFunction[] = [
     doc: "Configura el disparador que recorre el splat.",
     params: BEAM_PARAMS,
     snippet:
-      "beam({\n  shape: '${1|sheet,beam|}',\n  sweepAxis: '${2|x,y,z|}',\n  speed: ${3:0.1},\n  radius: ${4:0.015},\n  color: '${5:#ff2a2a}',\n})",
+      "beam({\n  shape: '${1|sheet,beam|}',\n  sweepAxis: '${2|x,y,z|}',\n  speed: ${3:0.04},\n  radius: ${4:0.015},\n  color: '${5:#ff2a2a}',\n})",
   },
   {
     name: "mapping",
@@ -148,21 +165,21 @@ export const API: ApiFunction[] = [
     doc: "Traduce cada gaussiana a sonido: altura, intensidad, timbre, paneo y duración.",
     params: MAPPING_PARAMS,
     snippet:
-      "mapping({\n  baseNote: ${1:36},\n  scale: util.scales.${2:minorPentatonic},\n  pitchFrom: '${3|hue,sat,lum,size,opacity,x,y,z|}',\n  density: ${4:0.05},\n  maxVoices: ${5:32},\n})",
+      "mapping({\n  baseNote: ${1:36},\n  scale: util.scales.${2:minorPentatonic},\n  pitchFrom: '${3|hue,sat,lum,size,opacity,x,y,z|}',\n  density: ${4:0.03},\n  maxVoices: ${5:32},\n})",
   },
   {
     name: "scene",
     signature: "scene({ ... })",
     doc: "Ajustes visuales: modo de vista, fondo y destellos.",
     params: SCENE_PARAMS,
-    snippet: "scene({\n  view: '${1|splats,points|}',\n  pointSize: ${2:0.33},\n  background: '${3:#05060a}',\n})",
+    snippet: "scene({\n  view: '${1|splats,points|}',\n  pointSize: ${2:0.05},\n  background: '${3:#05060a}',\n})",
   },
   {
     name: "effects",
     signature: "effects({ ... }) | effects('whirlwind')",
     doc: "Deformación GPU de splats y puntos: implosion, explosion, gravity, melt, whirlwind, pulse, wave.",
     params: EFFECT_PARAMS,
-    snippet: "effects({\n  type: '${1|none,implosion,explosion,gravity,melt,whirlwind,pulse,wave|}',\n  strength: ${2:0.7},\n  speed: ${3:1},\n  colorShift: ${4:0.2},\n})",
+    snippet: "effects({\n  type: '${1|none,implosion,explosion,gravity,melt,whirlwind,pulse,wave|}',\n  strength: ${2:0.55},\n  speed: ${3:0.15},\n  colorShift: ${4:0.2},\n})",
   },
   {
     name: "camera",
@@ -297,11 +314,21 @@ export const UTIL_ENTRIES: ApiParam[] = [
 ];
 
 /** Valores sugeribles por nombre de propiedad, para el autocompletado. */
-export const VALUE_HINTS: Record<string, string[]> = Object.fromEntries(
-  [...BEAM_PARAMS, ...MAPPING_PARAMS, ...SCENE_PARAMS]
-    .filter((param) => param.values && param.values.length > 0)
-    .map((param) => [param.name, param.values!]),
-);
+export const VALUE_HINTS: Record<string, string[]> = (() => {
+  const out: Record<string, string[]> = {};
+  for (const param of [
+    ...BEAM_PARAMS,
+    ...MAPPING_PARAMS,
+    ...SCENE_PARAMS,
+    ...EFFECT_PARAMS,
+    ...CAMERA_PARAMS,
+  ]) {
+    if (!param.values?.length) continue;
+    const prev = out[param.name] ?? [];
+    out[param.name] = [...new Set([...prev, ...param.values])];
+  }
+  return out;
+})();
 
 export const CALL_PARAMS: Record<string, ApiParam[]> = {
   beam: BEAM_PARAMS,

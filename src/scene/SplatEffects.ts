@@ -36,8 +36,9 @@ export type EffectConfig = {
 
 export const defaultEffect = (): EffectConfig => ({
   type: "none",
-  strength: 0.5,
-  speed: 1,
+  strength: 0.45,
+  // Por defecto casi meditativo; el tiempo del shader usa time * speed.
+  speed: 0.22,
   colorShift: 0,
   origin: [0, 0, 0],
 });
@@ -223,14 +224,14 @@ export class SplatEffects {
   }
 }
 
-/** Presets de efecto listos para el sketch. */
+/** Presets de efecto listos para el sketch (velocidades bajas, meditativas). */
 export const EFFECT_PRESETS: Record<string, EffectConfig> = {
   none: defaultEffect(),
-  implosion: { type: "implosion", strength: 0.7, speed: 1.2, colorShift: 0.15, origin: [0, 0, 0] },
-  explosion: { type: "explosion", strength: 0.85, speed: 0.9, colorShift: 0.25, origin: [0, 0, 0] },
-  gravity: { type: "gravity", strength: 0.6, speed: 1, colorShift: 0.05, origin: [0, 0, 0] },
-  melt: { type: "melt", strength: 0.75, speed: 0.6, colorShift: 0.35, origin: [0, 0, 0] },
-  whirlwind: { type: "whirlwind", strength: 0.9, speed: 1.4, colorShift: 0.4, origin: [0, 0, 0] },
-  pulse: { type: "pulse", strength: 0.55, speed: 1.8, colorShift: 0.2, origin: [0, 0, 0] },
-  wave: { type: "wave", strength: 0.5, speed: 1.1, colorShift: 0.1, origin: [0, 0, 0] },
+  implosion: { type: "implosion", strength: 0.55, speed: 0.18, colorShift: 0.12, origin: [0, 0, 0] },
+  explosion: { type: "explosion", strength: 0.6, speed: 0.16, colorShift: 0.2, origin: [0, 0, 0] },
+  gravity: { type: "gravity", strength: 0.5, speed: 0.14, colorShift: 0.05, origin: [0, 0, 0] },
+  melt: { type: "melt", strength: 0.55, speed: 0.12, colorShift: 0.28, origin: [0, 0, 0] },
+  whirlwind: { type: "whirlwind", strength: 0.65, speed: 0.12, colorShift: 0.3, origin: [0, 0, 0] },
+  pulse: { type: "pulse", strength: 0.4, speed: 0.2, colorShift: 0.15, origin: [0, 0, 0] },
+  wave: { type: "wave", strength: 0.4, speed: 0.15, colorShift: 0.08, origin: [0, 0, 0] },
 };

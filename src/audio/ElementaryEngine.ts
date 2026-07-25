@@ -190,43 +190,103 @@ export class ElementaryEngine {
     if (this.voices.length > count) this.voices.length = count;
   }
 
-  /** Disparo de hits (capa hits por defecto). */
-  trigger(params: VoiceParams, layerId = "hits"): void {
+  /** Disparo de hits (capa hits por defecto). `priority` antepone en cola (seq/MIDI). */
+  trigger(params: VoiceParams, layerId = "hits", priority = false): void {
     if (!this.core) return;
-    if (this.queue.length >= MAX_QUEUE) return;
     const layer = this.layers.find((l) => l.id === layerId);
     if (layer && !layer.enabled) return;
-    this.queue.push({ params, layerId });
+    if (!priority && this.queue.length >= MAX_QUEUE) return;
+    const item = { params, layerId };
+    if (priority) {
+      // Reserva sitio aunque la cola esté llena: el seq no debe perderse bajo el haz.
+      if (this.queue.length >= MAX_QUEUE) this.queue.pop();
+      this.queue.unshift(item);
+    } else {
+      this.queue.push(item);
+    }
   }
+
+  /** Notas sostenidas del teclado PC (clave layerId:midi → índice de voz). */
+  private heldKeys = new Map<string, number>();
 
   /** Nota MIDI o secuenciador → capa. */
   noteOn(layerId: string, midi: number, velocity = 0.8, decay = 0.5): void {
     const layer = this.layers.find((l) => l.id === layerId);
     if (!layer || !layer.enabled) return;
-    const note = quantizeToScale(
-      ((midi % 12) + (midi - layer.root)) / (12 * Math.max(1, layer.octaves)),
-      layer.scale,
-      layer.octaves,
-      layer.root,
-    );
-    // Si la nota ya está en la escala relativa, usamos el midi cuantizado a la escala desde root.
     const quantized = quantizeToScale(
-      Math.min(0.999, Math.max(0, (midi - layer.root) / (12 * layer.octaves))),
+      Math.min(0.999, Math.max(0, (midi - layer.root) / (12 * Math.max(1, layer.octaves)))),
       layer.scale,
       layer.octaves,
       layer.root,
     );
-    void note;
     this.trigger(
       {
         freq: midiToFreq(quantized),
-        amp: Math.min(1, Math.max(0.05, velocity)) * layer.gain,
+        amp: Math.min(1, Math.max(0.05, velocity)),
         pan: 0.5,
         tone: layer.tone,
         decay,
       },
       layerId,
+      true,
     );
+  }
+
+  /**
+   * Teclado PC: nota sostenida mientras la tecla está abajo.
+   * Cuantiza a la escala de la capa (como Ableton con scale).
+   */
+  keyDown(layerId: string, midi: number, velocity = 0.85): void {
+    if (!this.core) return;
+    const layer = this.layers.find((l) => l.id === layerId);
+    if (!layer || !layer.enabled) return;
+    const key = `${layerId}:${midi}`;
+    if (this.heldKeys.has(key)) return;
+
+    const quantized = quantizeToScale(
+      Math.min(0.999, Math.max(0, (midi - layer.root) / (12 * Math.max(1, layer.octaves)))),
+      layer.scale,
+      layer.octaves,
+      layer.root,
+    );
+    const now = performance.now();
+    const voice = this.allocate(now);
+    if (!voice) return;
+    voice.layerId = layerId;
+    voice.freq = midiToFreq(quantized);
+    voice.amp = Math.min(1, Math.max(0.05, velocity));
+    voice.pan = 0.5;
+    voice.tone = layer.tone;
+    voice.decay = 0.8;
+    voice.gate = 1;
+    voice.offAt = Number.POSITIVE_INFINITY;
+    voice.freeAt = Number.POSITIVE_INFINITY;
+    voice.active = true;
+    voice.pending = null;
+    this.heldKeys.set(key, this.voices.indexOf(voice));
+    this.layerEnergy[layerId] = Math.min(1, (this.layerEnergy[layerId] ?? 0) + 0.35);
+    this.valuesDirty = true;
+  }
+
+  keyUp(layerId: string, midi: number): void {
+    const key = `${layerId}:${midi}`;
+    const idx = this.heldKeys.get(key);
+    this.heldKeys.delete(key);
+    if (idx == null) return;
+    const voice = this.voices[idx];
+    if (!voice) return;
+    const now = performance.now();
+    voice.gate = 0;
+    voice.offAt = now;
+    voice.freeAt = now + 400;
+    this.valuesDirty = true;
+  }
+
+  releaseAllKeys(): void {
+    for (const key of [...this.heldKeys.keys()]) {
+      const [layerId, midi] = key.split(":");
+      this.keyUp(layerId, Number(midi));
+    }
   }
 
   panic(): void {

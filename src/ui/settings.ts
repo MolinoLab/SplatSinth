@@ -1,4 +1,5 @@
 import type { ViewMode } from "../core/types";
+import { readJsonCookie, writeJsonCookie } from "./cookies";
 
 export type UiSettings = {
   /** Color de acento de la interfaz. No afecta al haz, que lo fija el sketch. */
@@ -8,37 +9,96 @@ export type UiSettings = {
   /** Ancho del panel del sketch en píxeles. */
   editorWidth: number;
   editorFontSize: number;
+  /** Ancho del panel patch. */
+  patchWidth: number;
+  /** Altura del panel del secuenciador. */
+  seqHeight: number;
   /** Modo de visualización: lo controla Ajustes, no la toolbar. */
   viewMode: ViewMode;
-  /** Tamaño de los puntos en modo nube. */
+  /** Tamaño base de los puntos en modo nube. */
   pointSize: number;
+  /** Multiplicador del tamaño de punto (permite valores muy pequeños). */
+  pointSizeMult: number;
+  /** Volumen de salida general 0..1 (slider de la barra inferior). */
+  masterVolume: number;
+  /** Duración del morph al cambiar de splat. */
+  morphDuration: number;
+  /** Si false, los cambios de splat son instantáneos (duration 0). */
+  morphEnabled: boolean;
+  /** Teclado del PC como teclado Ableton. */
+  computerKeyboard: boolean;
 };
 
-const STORAGE_KEY = "splatsinth.ui";
+const COOKIE_KEY = "splatsinth.ui";
+/** Migración desde localStorage si existía. */
+const LEGACY_KEY = "splatsinth.ui";
 
 export const defaultUiSettings = (): UiSettings => ({
   accent: "#ff2a4a",
   panelOpacity: 0.5,
   editorWidth: 560,
   editorFontSize: 12.5,
+  patchWidth: 340,
+  seqHeight: 200,
   viewMode: "splats",
-  pointSize: 0.33,
+  pointSize: 0.05,
+  pointSizeMult: 1,
+  masterVolume: 0.7,
+  morphDuration: 2,
+  morphEnabled: false,
+  computerKeyboard: false,
 });
 
 export function loadUiSettings(): UiSettings {
   const defaults = defaultUiSettings();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const fromCookie = readJsonCookie<Partial<UiSettings>>(COOKIE_KEY);
+    if (fromCookie) return { ...defaults, ...fromCookie };
+
+    const raw = localStorage.getItem(LEGACY_KEY);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<UiSettings>;
-    return { ...defaults, ...parsed };
+    const merged = { ...defaults, ...parsed };
+    saveUiSettings(merged);
+    return merged;
   } catch {
     return defaults;
   }
 }
 
 export function saveUiSettings(settings: UiSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  writeJsonCookie(COOKIE_KEY, settings);
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Slider logarítmico de tamaño de punto: el centro (t=0.5) es 0.05.
+ * Rango base: 0.005 … 0.25. El multiplicador puede bajarlo aún más.
+ */
+export const POINT_SIZE_MIN = 0.005;
+export const POINT_SIZE_MAX = 0.25;
+export const POINT_SIZE_MULTS = [0.1, 0.25, 0.5, 1, 2] as const;
+
+export function pointSizeToSlider(size: number): number {
+  const lo = Math.log(POINT_SIZE_MIN);
+  const hi = Math.log(POINT_SIZE_MAX);
+  const t = (Math.log(Math.min(POINT_SIZE_MAX, Math.max(POINT_SIZE_MIN, size))) - lo) / (hi - lo);
+  return t;
+}
+
+export function sliderToPointSize(t: number): number {
+  const lo = Math.log(POINT_SIZE_MIN);
+  const hi = Math.log(POINT_SIZE_MAX);
+  return Math.exp(lo + Math.min(1, Math.max(0, t)) * (hi - lo));
+}
+
+/** Tamaño efectivo dibujado = base × multiplicador. */
+export function effectivePointSize(settings: Pick<UiSettings, "pointSize" | "pointSizeMult">): number {
+  return Math.max(0.0005, settings.pointSize * settings.pointSizeMult);
 }
 
 function toRgb(hex: string): [number, number, number] {
@@ -70,6 +130,8 @@ export function applyUiSettings(settings: UiSettings): void {
   );
   root.setProperty("--panel-alpha", String(settings.panelOpacity));
   root.setProperty("--editor-width", `${settings.editorWidth}px`);
+  root.setProperty("--patch-width", `${settings.patchWidth}px`);
+  root.setProperty("--seq-height", `${settings.seqHeight}px`);
 }
 
 export const ACCENT_SWATCHES = [

@@ -5,13 +5,15 @@ type Props = {
   midi: MidiHub;
   devices: number;
   onEnable: () => void;
+  /** Versión compacta para embeber en Ajustes. */
+  compact?: boolean;
 };
 
 /**
  * Gráfica sencilla de actividad MIDI en tiempo real: cada canal es una pista
  * y las notas aparecen como bloques que avanzan.
  */
-export function MidiGraph({ midi, devices, onEnable }: Props) {
+export function MidiGraph({ midi, devices, onEnable, compact }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -65,15 +67,20 @@ export function MidiGraph({ midi, devices, onEnable }: Props) {
   }, [midi]);
 
   return (
-    <section className="midi-panel">
+    <section className={compact ? "midi-panel compact" : "midi-panel"}>
       <header className="seq-head">
-        <span className="panel-title">MIDI</span>
+        {!compact && <span className="panel-title">MIDI</span>}
         <button className="primary" onClick={onEnable}>
           {devices > 0 ? `${devices} dispositivo(s)` : "Activar MIDI"}
         </button>
         <span className="hint">cable + BLE vía Web MIDI</span>
       </header>
-      <canvas ref={canvasRef} width={640} height={120} className="midi-canvas" />
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={compact ? 96 : 120}
+        className="midi-canvas"
+      />
       <DeviceList midi={midi} />
     </section>
   );

@@ -48,6 +48,20 @@ export function quantizeToScale(
   return rootMidi + octave * 12 + degrees[degree];
 }
 
+/** Grado entero del secuenciador (0,1,2…) → nota MIDI en la escala. */
+export function scaleDegreeToMidi(
+  degree: number,
+  scale: number[] | ScaleName | "chromatic",
+  rootMidi: number,
+): number {
+  const degrees = resolveScale(scale);
+  if (degrees.length === 0) return rootMidi;
+  const idx = Math.floor(degree);
+  const octave = Math.floor(idx / degrees.length);
+  const step = ((idx % degrees.length) + degrees.length) % degrees.length;
+  return rootMidi + octave * 12 + degrees[step];
+}
+
 export const ROOT_PRESETS: { label: string; midi: number }[] = [
   { label: "C3", midi: 48 },
   { label: "D3", midi: 50 },

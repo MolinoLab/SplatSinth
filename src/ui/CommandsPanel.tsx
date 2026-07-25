@@ -24,7 +24,7 @@ export function CommandsPanel({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       title="Comandos"
-      subtitle="Todo lo que puedes escribir en el sketch. En el editor sale lo mismo al pulsar espacio."
+      subtitle="Todo lo que puedes escribir en el sketch. En el editor: Ctrl+Espacio, o escribe util.scales. / prop:"
       wide
       onClose={onClose}
     >

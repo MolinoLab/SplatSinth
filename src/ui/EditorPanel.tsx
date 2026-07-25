@@ -55,6 +55,10 @@ export function EditorPanel({
 
   const handleMount: OnMount = (editor) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => applyRef.current());
+    // Menú contextual de sugerencias (escalas, params…) con Ctrl+Espacio.
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
+      void editor.trigger("splatsinth", "editor.action.triggerSuggest", {});
+    });
   };
 
   useEffect(() => {
@@ -185,12 +189,15 @@ export function EditorPanel({
           </>
         )}
         <button
+          className={isHidden ? undefined : "icon-btn"}
           onClick={() => {
             if (onToggleHidden) onToggleHidden();
             else setCollapsed((c) => !c);
           }}
+          title={isHidden ? "Mostrar editor" : "Cerrar"}
+          aria-label={isHidden ? "Mostrar editor" : "Cerrar"}
         >
-          {isHidden ? "Editor" : "Ocultar"}
+          {isHidden ? "Editor" : "×"}
         </button>
       </header>
 
@@ -240,6 +247,15 @@ export function EditorPanel({
               suggestOnTriggerCharacters: true,
               acceptSuggestionOnEnter: "off",
               tabCompletion: "on",
+              snippetSuggestions: "inline",
+              suggest: {
+                showWords: false,
+                showIcons: true,
+                filterGraceful: true,
+                localityBonus: true,
+                insertMode: "replace",
+                preview: true,
+              },
               scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
             }}
           />

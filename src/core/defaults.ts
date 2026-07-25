@@ -17,7 +17,8 @@ export const defaultBeam = (): BeamConfig => ({
   shape: "sheet",
   sweepAxis: "y",
   beamAxis: "x",
-  speed: 0.12,
+  // Ritmo meditativo: ~25 s por recorrido completo.
+  speed: 0.04,
   radius: 0.015,
   mode: "pingpong",
   color: "#ff2a2a",
@@ -34,19 +35,18 @@ export const defaultMapping = (): MappingConfig => ({
   ampFrom: "size",
   toneFrom: "lum",
   panFrom: "x",
-  decay: [0.25, 3.2],
+  decay: [0.4, 4.5],
   decayFrom: "size",
-  gain: 0.7,
-  density: 0.06,
+  gain: 0.65,
+  density: 0.03,
   maxVoices: 32,
-  retriggerMs: 900,
-  maxTriggersPerTick: 6,
+  retriggerMs: 1600,
+  maxTriggersPerTick: 3,
 });
 
 export const defaultScene = (): SceneConfig => ({
   view: "splats",
-  // Antes era 2; en modo puntos se veía enorme. 1/6 ≈ 0.33.
-  pointSize: 0.33,
+  pointSize: 0.05,
   pointOpacity: 0.9,
   pointAttenuation: 1,
   pointRound: true,

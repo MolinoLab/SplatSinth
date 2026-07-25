@@ -1,19 +1,33 @@
+import { useCallback } from "react";
 import type { ProjectState } from "../sketch/project";
 import { SCALE_OPTIONS, ROOT_PRESETS, midiToName } from "../core/music";
 import type { SoundLayer } from "../core/layers";
+import { clampSize, startResizeDrag } from "./resize";
+
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 720;
 
 type Props = {
   project: ProjectState;
   onChange: (next: ProjectState) => void;
   collapsed: boolean;
   onToggle: () => void;
+  width: number;
+  onWidthChange: (width: number) => void;
 };
 
 /**
  * Interfaz visual tipo patch: nodos/bloques con sliders que editan el mismo
  * ProjectState que el sketch. Al cambiar, el código declarativo se regenera.
  */
-export function PatchPanel({ project, onChange, collapsed, onToggle }: Props) {
+export function PatchPanel({
+  project,
+  onChange,
+  collapsed,
+  onToggle,
+  width,
+  onWidthChange,
+}: Props) {
   const patch = <K extends keyof ProjectState>(key: K, value: ProjectState[K]) =>
     onChange({ ...project, [key]: value });
 
@@ -29,6 +43,19 @@ export function PatchPanel({ project, onChange, collapsed, onToggle }: Props) {
       project.layers.map((l) => (l.id === id ? { ...l, ...partial } : l)),
     );
 
+  const startResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const handle = event.currentTarget;
+      const panel = handle.closest(".patch-panel") as HTMLElement | null;
+      const right = panel?.getBoundingClientRect().right ?? window.innerWidth - 16;
+      startResizeDrag(handle, event.pointerId, (clientX) => {
+        onWidthChange(clampSize(right - clientX, MIN_WIDTH, MAX_WIDTH));
+      });
+    },
+    [onWidthChange],
+  );
+
   if (collapsed) {
     return (
       <section className="panel patch-panel collapsed">
@@ -41,11 +68,14 @@ export function PatchPanel({ project, onChange, collapsed, onToggle }: Props) {
   }
 
   return (
-    <section className="panel patch-panel">
+    <section className="panel patch-panel" style={{ width }}>
+      <div className="resize-handle" onPointerDown={startResize} title="Arrastra para cambiar el ancho" />
       <header className="panel-head">
         <span className="panel-title">Patch</span>
         <span className="hint">sincronizado con el sketch</span>
-        <button onClick={onToggle}>Ocultar</button>
+        <button className="icon-btn" onClick={onToggle} title="Cerrar" aria-label="Cerrar">
+          ×
+        </button>
       </header>
 
       <div className="patch-body">
@@ -127,9 +157,9 @@ export function PatchPanel({ project, onChange, collapsed, onToggle }: Props) {
           <Slider
             label="pointSize"
             value={project.scene.pointSize}
-            min={0.05}
-            max={4}
-            step={0.05}
+            min={0.001}
+            max={0.5}
+            step={0.001}
             onChange={(pointSize) => patchScene({ pointSize })}
           />
         </div>

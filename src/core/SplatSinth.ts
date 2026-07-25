@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { ElementaryEngine } from "../audio/ElementaryEngine";
 import { MidiHub } from "../audio/MidiHub";
 import { SequencerClock, type SequencerState } from "../audio/Sequencer";
+import { ComputerKeyboard } from "../audio/ComputerKeyboard";
 import { BeamTrigger } from "../sonify/BeamTrigger";
 import { SonicCloud } from "../sonify/SonicCloud";
 import { emptySamples, type SplatSamples } from "../sonify/extract";
@@ -12,7 +13,7 @@ import { defaultEffect, EFFECT_PRESETS, type EffectConfig } from "../scene/Splat
 import { evaluateSketch, validateMaster, validateSynth } from "../sketch/runtime";
 import { MAX_SONIC_POINTS, defaultBeam, defaultMapping, defaultScene } from "./defaults";
 import { defaultLayers, type SoundLayer } from "./layers";
-import { quantizeToScale } from "./music";
+import { scaleDegreeToMidi } from "./music";
 import type {
   AnimateFn,
   BeamConfig,
@@ -52,6 +53,11 @@ export type Status = {
   seqStep: number;
   seqRunning: boolean;
   layerEnergy: Record<string, number>;
+  /** Estimación de VRAM GPU en MB. */
+  vramMb: number;
+  /** Capa activa del teclado PC. */
+  keyboardLayer: string;
+  keyboardOctave: number;
   busy: string | null;
   error: string | null;
   logs: string[];
@@ -68,6 +74,7 @@ export class SplatSinth {
   readonly engine = new ElementaryEngine();
   readonly midi = new MidiHub();
   readonly sequencer = new SequencerClock();
+  readonly keyboard = new ComputerKeyboard();
 
   beam: BeamConfig = defaultBeam();
   mapping: MappingConfig = defaultMapping();
@@ -114,6 +121,9 @@ export class SplatSinth {
     seqStep: 0,
     seqRunning: false,
     layerEnergy: {},
+    vramMb: 0,
+    keyboardLayer: "hits",
+    keyboardOctave: 3,
     busy: null,
     error: null,
     logs: [],
@@ -135,22 +145,56 @@ export class SplatSinth {
     this.sequencer.setOnStep((triggers) => {
       for (const t of triggers) {
         const layer = this.layers.find((l) => l.id === t.layerId) ?? this.layers[0];
-        const midi = quantizeToScale(t.degree / 8, layer.scale, layer.octaves, layer.root);
+        if (!layer || !layer.enabled) continue;
+        const midi = scaleDegreeToMidi(t.degree, layer.scale, layer.root);
         this.engine.trigger(
           {
             freq: midiToFreq(midi),
-            amp: 0.55 * layer.gain,
+            amp: 0.7,
             pan: 0.5,
             tone: layer.tone,
-            decay: 0.35,
+            decay: 0.28,
           },
           layer.id,
+          true,
         );
       }
     });
 
+    this.keyboard.setNoteHandler((layerId, midi, velocity, down) => {
+      if (down) {
+        void this.ensureAudioForKeys();
+        this.engine.keyDown(layerId, midi, velocity);
+      } else {
+        this.engine.keyUp(layerId, midi);
+      }
+      this.patch({
+        keyboardLayer: this.keyboard.layerId,
+        keyboardOctave: Math.floor(this.keyboard.baseMidi / 12) - 1,
+      });
+    });
+    this.keyboard.start();
+
     this.lastFrame = performance.now();
     this.raf = requestAnimationFrame(this.frame);
+  }
+
+  private async ensureAudioForKeys(): Promise<void> {
+    if (!this.engine.ready || !this.engine.running) {
+      try {
+        await this.startAudio();
+      } catch {
+        /* el usuario verá el error en status */
+      }
+    }
+  }
+
+  setComputerKeyboard(enabled: boolean): void {
+    this.keyboard.setEnabled(enabled);
+    if (!enabled) this.engine.releaseAllKeys();
+    // Evita pelear WASD con el teclado musical.
+    if (enabled) this.cameraConfig.wasd = false;
+    this.scene.cam.applyConfig(this.cameraConfig);
   }
 
   /** El haz sigue el color de acento de la interfaz, salvo que el sketch lo fije. */
@@ -179,6 +223,7 @@ export class SplatSinth {
       this.mapping.density = hits.density;
       this.mapping.gain = hits.gain;
     }
+    this.engine.setGain(this.mapping.gain * this.outputVolume);
   }
 
   setSequencer(state: SequencerState): void {
@@ -240,18 +285,22 @@ export class SplatSinth {
 
   toggleBeam(): void {
     this.beam.running = !this.beam.running;
-    if (!this.beam.running) this.engine.panic();
   }
 
-  /** Carga demos y archivos listados en /splats/manifest.json. */
-  async loadCatalog(): Promise<void> {
+  /**
+   * Registra demos/archivos del manifest sin activarlos en GPU.
+   * Devuelve cuántas entradas nuevas se añadieron.
+   */
+  async loadCatalog(): Promise<number> {
+    let added = 0;
     try {
       const res = await fetch("/splats/manifest.json");
-      if (!res.ok) return;
+      if (!res.ok) return 0;
       const manifest = (await res.json()) as {
         demos?: { id: string; name: string; generator?: "sphere" | "grid" }[];
         files?: { id: string; name: string; url: string }[];
       };
+      const before = this.scene.library.entries.length;
       for (const demo of manifest.demos ?? []) {
         this.scene.library.addDemo(demo);
       }
@@ -262,12 +311,34 @@ export class SplatSinth {
           url: file.url.startsWith("/") ? file.url : `/splats/${file.url}`,
         });
       }
+      added = this.scene.library.entries.length - before;
       this.publishLibrary();
-      if (this.scene.library.entries.length > 0 && this.scene.library.activeIndex < 0) {
-        await this.activate(0, 0);
-      }
     } catch {
       /* sin catálogo, no pasa nada */
+    }
+    return added;
+  }
+
+  /** Añade los ejemplos del manifest y activa el primero si no hay activo. */
+  async loadExamples(morphDuration = 0): Promise<void> {
+    this.patch({ busy: "Cargando ejemplos…" });
+    try {
+      await this.loadCatalog();
+      if (this.scene.library.entries.length === 0) {
+        this.patch({ busy: null, error: "No hay ejemplos en /splats/manifest.json" });
+        return;
+      }
+      if (this.scene.library.activeIndex < 0) {
+        await this.activate(0, morphDuration);
+      } else {
+        this.publishLibrary();
+      }
+      this.patch({ busy: null, error: null });
+    } catch (err) {
+      this.patch({
+        busy: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -338,9 +409,17 @@ export class SplatSinth {
     this.scene.applyConfig(this.sceneConfig);
   }
 
+  private outputVolume = 0.7;
+
   setPointSize(size: number): void {
-    this.sceneConfig.pointSize = clamp(size, 0.05, 32);
+    this.sceneConfig.pointSize = clamp(size, 0.0005, 32);
     this.scene.applyConfig(this.sceneConfig);
+  }
+
+  /** Volumen de salida de la UI (se multiplica por mapping.gain). */
+  setOutputVolume(volume: number): void {
+    this.outputVolume = clamp(volume, 0, 1);
+    this.engine.setGain(this.mapping.gain * this.outputVolume);
   }
 
   private adoptActive(): void {
@@ -442,7 +521,7 @@ export class SplatSinth {
     if (staged.master) this.engine.setMaster(staged.master);
     this.animateFn = staged.animate;
 
-    this.engine.setGain(this.mapping.gain);
+    this.engine.setGain(this.mapping.gain * this.outputVolume);
     this.engine.setMaxVoices(this.mapping.maxVoices);
     this.engine.setLayers(this.layers);
     this.scene.applyConfig(this.sceneConfig);
@@ -491,7 +570,7 @@ export class SplatSinth {
 
     this.sceneConfig.exposure = clamp(this.sceneConfig.exposure, 0.05, 4);
     this.sceneConfig.splatScale = clamp(this.sceneConfig.splatScale, 0.01, 100);
-    this.sceneConfig.pointSize = clamp(this.sceneConfig.pointSize, 0.05, 32);
+    this.sceneConfig.pointSize = clamp(this.sceneConfig.pointSize, 0.0005, 32);
     this.sceneConfig.pointOpacity = clamp(this.sceneConfig.pointOpacity, 0.02, 1);
     this.sceneConfig.pointAttenuation = clamp(this.sceneConfig.pointAttenuation, 0, 1);
     if (this.sceneConfig.view !== "points") this.sceneConfig.view = "splats";
@@ -624,13 +703,41 @@ export class SplatSinth {
         seqStep: this.sequencer.currentStep,
         seqRunning: this.sequencer.state.running,
         layerEnergy: stats.layerEnergy,
+        vramMb: this.estimateVramMb(),
+        keyboardLayer: this.keyboard.layerId,
+        keyboardOctave: Math.floor(this.keyboard.baseMidi / 12) - 1,
       });
     }
   };
 
+  /**
+   * Estimación de VRAM: splats cargados (~48 B/gaussiana en GPU) + texturas/geometrías
+   * de Three, o WEBGL_memory_info / GMAN si el navegador lo expone.
+   */
+  private estimateVramMb(): number {
+    const gl = this.scene.renderer.getContext() as WebGLRenderingContext;
+    const debugMem = (
+      gl.getExtension("GMAN_webgl_memory") as { getMemoryInfo?: () => { memory: { total: number } } } | null
+    )?.getMemoryInfo?.();
+    if (debugMem?.memory?.total) {
+      return debugMem.memory.total / (1024 * 1024);
+    }
+
+    let bytes = 0;
+    for (const entry of this.scene.library.entries) {
+      if (entry.mesh) bytes += Math.max(entry.numSplats, 1) * 48;
+    }
+    const mem = this.scene.renderer.info.memory;
+    // Heurística: cada textura/geometría cuenta algo en el presupuesto.
+    bytes += mem.textures * 256 * 1024;
+    bytes += mem.geometries * 64 * 1024;
+    return bytes / (1024 * 1024);
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.raf);
     this.listeners.clear();
+    this.keyboard.stop();
     this.midi.stop();
     this.engine.dispose();
     this.scene.dispose();

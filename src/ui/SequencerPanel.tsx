@@ -1,17 +1,34 @@
+import { useCallback } from "react";
 import { setCell, type SequencerState } from "../audio/Sequencer";
+import { clampSize, startResizeDrag } from "./resize";
 
 type Props = {
   state: SequencerState;
   currentStep: number;
+  height: number;
+  audioReady: boolean;
   onChange: (next: SequencerState) => void;
+  onHeightChange: (height: number) => void;
+  onEnsureAudio: () => Promise<void>;
 };
 
 const CHARS = [".", "0", "1", "2", "3", "5", "7", "*"];
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT = 480;
 
 /**
  * Secuenciador ASCII tipo Orca: clic cicla el carácter del paso.
+ * Cada celda ≠ "." dispara un grado de la escala en la capa elegida.
  */
-export function SequencerPanel({ state, currentStep, onChange }: Props) {
+export function SequencerPanel({
+  state,
+  currentStep,
+  height,
+  audioReady,
+  onChange,
+  onHeightChange,
+  onEnsureAudio,
+}: Props) {
   const cycle = (trackId: string, step: number) => {
     const track = state.tracks.find((t) => t.id === trackId);
     if (!track) return;
@@ -25,14 +42,34 @@ export function SequencerPanel({ state, currentStep, onChange }: Props) {
     });
   };
 
+  const startResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const handle = event.currentTarget;
+      startResizeDrag(handle, event.pointerId, (_x, clientY) => {
+        const bottom = window.innerHeight - 52;
+        onHeightChange(clampSize(bottom - clientY, MIN_HEIGHT, MAX_HEIGHT));
+      });
+    },
+    [onHeightChange],
+  );
+
+  const togglePlay = async () => {
+    const nextRunning = !state.running;
+    if (nextRunning) await onEnsureAudio();
+    onChange({ ...state, running: nextRunning });
+  };
+
   return (
-    <section className="seq-panel">
+    <section className="seq-panel" style={{ height }}>
+      <div
+        className="resize-handle resize-handle-ns"
+        onPointerDown={startResize}
+        title="Arrastra para cambiar la altura"
+      />
       <header className="seq-head">
         <span className="panel-title">Seq</span>
-        <button
-          className={state.running ? "active" : ""}
-          onClick={() => onChange({ ...state, running: !state.running })}
-        >
+        <button className={state.running ? "active" : ""} onClick={() => void togglePlay()}>
           {state.running ? "Stop" : "Play"}
         </button>
         <label className="inline-label">
@@ -57,6 +94,10 @@ export function SequencerPanel({ state, currentStep, onChange }: Props) {
         </label>
         <span className="hint">
           step <b>{currentStep}</b>
+        </span>
+        {!audioReady && <span className="hint warn-hint">Play enciende el audio</span>}
+        <span className="hint seq-help" title="0-9 = grado de escala · . = silencio · * = raíz">
+          0–9 grado · capa hits debe estar ON
         </span>
       </header>
 

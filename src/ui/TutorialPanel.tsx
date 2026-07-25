@@ -39,7 +39,7 @@ const STEPS = [
     title: "Toca el código",
     body: (
       <>
-        En el panel de la derecha cambia <code>speed</code> a <code>0.3</code> y pulsa{" "}
+        En el panel de la derecha cambia <code>speed</code> a <code>0.08</code> y pulsa{" "}
         <b>Ctrl+Enter</b>. Nada se aplica hasta que lo pides, así que puedes escribir con calma.
         <br />
         Dentro de <code>beam(</code> o <code>mapping(</code>, pulsa <b>espacio</b> y salen las

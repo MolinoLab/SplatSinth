@@ -14,8 +14,13 @@ import { SettingsPanel } from "./SettingsPanel";
 import { TutorialPanel } from "./TutorialPanel";
 import { PatchPanel } from "./PatchPanel";
 import { SequencerPanel } from "./SequencerPanel";
-import { MidiGraph } from "./MidiGraph";
-import { applyUiSettings, loadUiSettings, saveUiSettings, type UiSettings } from "./settings";
+import {
+  applyUiSettings,
+  effectivePointSize,
+  loadUiSettings,
+  saveUiSettings,
+  type UiSettings,
+} from "./settings";
 import { defaultSequencer } from "../audio/Sequencer";
 
 const EditorPanel = lazy(() => import("./EditorPanel").then((m) => ({ default: m.EditorPanel })));
@@ -44,6 +49,9 @@ const initialStatus: Status = {
   seqStep: 0,
   seqRunning: false,
   layerEnergy: {},
+  vramMb: 0,
+  keyboardLayer: "hits",
+  keyboardOctave: 3,
   busy: null,
   error: null,
   logs: [],
@@ -66,12 +74,13 @@ export function App() {
   const [userPresets, setUserPresets] = useState<Preset[]>(() => loadUserPresets());
   const [settings, setSettings] = useState<UiSettings>(() => loadUiSettings());
   const [flash, setFlash] = useState(false);
-  const [morphDuration, setMorphDuration] = useState(2);
   const [showSketch, setShowSketch] = useState(true);
-  const [showPatch, setShowPatch] = useState(true);
-  const [showBottom, setShowBottom] = useState(true);
+  const [showPatch, setShowPatch] = useState(false);
+  const [showSeq, setShowSeq] = useState(false);
 
   const presets = useMemo(() => [...BUILTIN_PRESETS, ...userPresets], [userPresets]);
+
+  const morphMs = settings.morphEnabled ? settings.morphDuration : 0;
 
   useEffect(() => {
     applyUiSettings(settings);
@@ -80,7 +89,9 @@ export function App() {
     if (!instance) return;
     instance.setAccentColor(settings.accent);
     instance.setView(settings.viewMode);
-    instance.setPointSize(settings.pointSize);
+    instance.setPointSize(effectivePointSize(settings));
+    instance.setOutputVolume(settings.masterVolume);
+    instance.setComputerKeyboard(settings.computerKeyboard);
   }, [settings]);
 
   useEffect(() => {
@@ -92,8 +103,10 @@ export function App() {
     instance.setAccentColor(settings.accent);
     instance.applySketch(initial);
     instance.setView(settings.viewMode);
-    instance.setPointSize(settings.pointSize);
-    void instance.loadCatalog();
+    instance.setPointSize(effectivePointSize(settings));
+    instance.setOutputVolume(settings.masterVolume);
+    instance.setComputerKeyboard(settings.computerKeyboard);
+    // Los ejemplos no se cargan solos: botón «Añadir ejemplos».
     return () => {
       unsubscribe();
       instance.dispose();
@@ -115,6 +128,7 @@ export function App() {
         ...s,
         viewMode: instance.sceneConfig.view,
         pointSize: instance.sceneConfig.pointSize,
+        pointSizeMult: 1,
       }));
       setFlash(true);
       window.setTimeout(() => setFlash(false), 320);
@@ -130,7 +144,6 @@ export function App() {
       setDirty(true);
       appRef.current?.setLayers(next.layers);
       if (next.sequencers[0]) appRef.current?.setSequencer(next.sequencers[0]);
-      // Aplica en vivo los ajustes visuales/sonoros del patch.
       const instance = appRef.current;
       if (instance) {
         Object.assign(instance.beam, next.beam);
@@ -164,6 +177,13 @@ export function App() {
     [openFiles],
   );
 
+  const ensureAudio = useCallback(async () => {
+    const instance = appRef.current;
+    if (!instance) return;
+    if (instance.engine.ready && instance.engine.running) return;
+    await instance.toggleAudio();
+  }, []);
+
   const audioLabel =
     status.audio === "running"
       ? "Audio activo"
@@ -191,10 +211,10 @@ export function App() {
         <div className="empty">
           <h1>SplatSinth</h1>
           <p>
-            Hay demos precargadas y puedes añadir tus propios splats. Capas sonoras, MIDI, patch
-            visual y secuenciador ASCII van juntos.
+            Añade tus splats o carga los ejemplos. Capas sonoras, MIDI, patch visual y
+            secuenciador ASCII van juntos.
           </p>
-          <p className="hint">Arrastra un .ply/.spz o usa las demos del catálogo</p>
+          <p className="hint">Arrastra un .ply/.spz o pulsa «Añadir ejemplos»</p>
         </div>
       )}
 
@@ -219,34 +239,32 @@ export function App() {
           <button className="primary" onClick={() => fileInputRef.current?.click()}>
             Añadir splats
           </button>
+          <button onClick={() => void appRef.current?.loadExamples(morphMs)}>
+            Añadir ejemplos
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => appRef.current?.clearSplats()}
+            disabled={status.splats === 0}
+            title="Vaciar biblioteca"
+            aria-label="Vaciar biblioteca"
+          >
+            ×
+          </button>
 
           {status.library.length > 0 && (
-            <>
-              <select
-                value={status.activeIndex}
-                onChange={(e) => {
-                  void appRef.current?.activate(Number(e.target.value), morphDuration);
-                }}
-              >
-                {status.library.map((entry) => (
-                  <option key={entry.id} value={entry.index}>
-                    {entry.index}: {entry.name}
-                  </option>
-                ))}
-              </select>
-              <label className="inline-label">
-                morph
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
-                  step={0.5}
-                  value={morphDuration}
-                  onChange={(e) => setMorphDuration(Number(e.target.value))}
-                />
-                s
-              </label>
-            </>
+            <select
+              value={status.activeIndex}
+              onChange={(e) => {
+                void appRef.current?.activate(Number(e.target.value), morphMs);
+              }}
+            >
+              {status.library.map((entry) => (
+                <option key={entry.id} value={entry.index}>
+                  {entry.index}: {entry.name}
+                </option>
+              ))}
+            </select>
           )}
 
           <button
@@ -266,10 +284,6 @@ export function App() {
             {beamRunning ? "Pausar haz" : "Reanudar haz"}
           </button>
 
-          <button onClick={() => appRef.current?.clearSplats()} disabled={status.splats === 0}>
-            Vaciar
-          </button>
-
           <span className="toolbar-sep" />
 
           <button className={showSketch ? "active" : ""} onClick={() => setShowSketch((v) => !v)}>
@@ -278,8 +292,17 @@ export function App() {
           <button className={showPatch ? "active" : ""} onClick={() => setShowPatch((v) => !v)}>
             Patch
           </button>
-          <button className={showBottom ? "active" : ""} onClick={() => setShowBottom((v) => !v)}>
-            Seq/MIDI
+          <button className={showSeq ? "active" : ""} onClick={() => setShowSeq((v) => !v)}>
+            Seq
+          </button>
+          <button
+            className={settings.computerKeyboard ? "active" : ""}
+            title="Teclado PC estilo Ableton (A=S do · Z/X octava · 1–4 capa)"
+            onClick={() =>
+              setSettings((s) => ({ ...s, computerKeyboard: !s.computerKeyboard }))
+            }
+          >
+            Teclado
           </button>
 
           <span className="toolbar-sep" />
@@ -296,6 +319,8 @@ export function App() {
               onChange={onProjectChange}
               collapsed={false}
               onToggle={() => setShowPatch(false)}
+              width={settings.patchWidth}
+              onWidthChange={(patchWidth) => setSettings((s) => ({ ...s, patchWidth }))}
             />
           )}
 
@@ -335,19 +360,18 @@ export function App() {
           </Suspense>
         </div>
 
-        {showBottom && appRef.current && (
+        {showSeq && (
           <div className="bottom-panels">
             <SequencerPanel
               state={seqState}
               currentStep={status.seqStep}
+              height={settings.seqHeight}
+              audioReady={status.audio === "running"}
+              onHeightChange={(seqHeight) => setSettings((s) => ({ ...s, seqHeight }))}
+              onEnsureAudio={ensureAudio}
               onChange={(next) => {
                 onProjectChange({ ...project, sequencers: [next] });
               }}
-            />
-            <MidiGraph
-              midi={appRef.current.midi}
-              devices={status.midiDevices}
-              onEnable={() => void appRef.current?.enableMidi()}
             />
           </div>
         )}
@@ -370,17 +394,41 @@ export function App() {
           <span>
             fps <b>{status.fps.toFixed(0)}</b>
           </span>
+          <span title="Tiempo de reconciliación del grafo de audio">
+            dsp <b>{status.renderMs.toFixed(1)} ms</b>
+          </span>
+          <span title="Estimación de memoria GPU (splats + buffers)">
+            vram <b>{status.vramMb < 10 ? status.vramMb.toFixed(1) : status.vramMb.toFixed(0)} MB</b>
+          </span>
           <span>
             midi <b>{status.midiDevices}</b>
           </span>
+          {settings.computerKeyboard && (
+            <span className="accent-label" title="Capa / octava del teclado PC">
+              keys <b>{status.keyboardLayer}</b> · C{status.keyboardOctave}
+            </span>
+          )}
           {status.seqRunning && (
             <span className="accent-label">
               seq <b>{status.seqStep}</b>
             </span>
           )}
-          <div className="meter" title="Nivel">
+          <div className="meter" title="Nivel de audio">
             <span style={{ width: `${Math.min(100, status.level * 100)}%` }} />
           </div>
+          <label className="vol-slider" title="Volumen general">
+            <span>vol</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={settings.masterVolume}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, masterVolume: Number(e.target.value) }))
+              }
+            />
+          </label>
           <span className="spacer" />
           {status.error ? (
             <span className="error" title={status.error}>
@@ -398,7 +446,17 @@ export function App() {
       {overlay === "commands" && <CommandsPanel onClose={() => setOverlay(null)} />}
       {overlay === "tutorial" && <TutorialPanel onClose={() => setOverlay(null)} />}
       {overlay === "settings" && (
-        <SettingsPanel settings={settings} onChange={setSettings} onClose={() => setOverlay(null)} />
+        <SettingsPanel
+          settings={settings}
+          onChange={setSettings}
+          onClose={() => setOverlay(null)}
+          midi={appRef.current?.midi ?? null}
+          midiDevices={status.midiDevices}
+          onEnableMidi={() => void appRef.current?.enableMidi()}
+          library={status.library}
+          activeIndex={status.activeIndex}
+          onActivate={(index) => void appRef.current?.activate(index, morphMs)}
+        />
       )}
     </div>
   );

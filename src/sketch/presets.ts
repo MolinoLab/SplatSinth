@@ -17,7 +17,7 @@ const CAMPANAS = `// SplatSinth — campanas de color
 beam({
   shape: 'sheet',       // 'sheet' barre una lámina, 'beam' un haz cilíndrico
   sweepAxis: 'y',       // eje que recorre
-  speed: 0.09,          // recorridos completos por segundo
+  speed: 0.04,          // recorridos completos por segundo (lento / meditativo)
   radius: 0.012,        // grosor relativo al tamaño de la escena
   mode: 'pingpong',     // o 'loop'
   color: '#ff2a2a',
@@ -34,15 +34,17 @@ mapping({
   toneFrom: 'lum',
   panFrom: 'x',
   decay: [0.4, 4.0],    // segundos: corto para gaussianas pequeñas, largo para grandes
-  density: 0.05,        // proporción de puntos que llegan a sonar
+  density: 0.03,        // proporción de puntos que llegan a sonar
   maxVoices: 32,
-  retriggerMs: 900,
-  gain: 0.7,
+  retriggerMs: 1600,
+  maxTriggersPerTick: 3,
+  gain: 0.65,
 })
 
 scene({
   background: '#05060a',
-  autoRotate: 0.02,     // radianes por segundo, 0 para dejarla quieta
+  pointSize: 0.05,
+  autoRotate: 0.008,    // radianes por segundo, 0 para dejarla quieta
   flashSize: 1.0,
   flashDecay: 0.8,
 })
@@ -216,55 +218,61 @@ animate((t, dt, api) => {
 })
 `;
 
-const TORBELLINO = `// Efecto torbellino + cámara en órbita
-// Prueba también: effects('implosion'), effects('explosion'), effects('gravity'),
-// effects('melt'), effects('pulse'), effects('wave') — o util.effects.whirlwind
-
-beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.08, radius: 0.014, color: '#ff2a2a' })
+function visualEffectPreset(
+  type: string,
+  title: string,
+  strength: number,
+  speed: number,
+  colorShift: number,
+  scale = "hirajoshi",
+): string {
+  return `// Visual — ${title} (lento / meditativo)
+beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.035, radius: 0.014, color: '#ff2a2a' })
 
 mapping({
   baseNote: 38,
-  scale: util.scales.hirajoshi,
+  scale: util.scales.${scale},
   pitchFrom: 'hue',
-  density: 0.04,
-  maxVoices: 28,
+  density: 0.025,
+  maxVoices: 24,
+  retriggerMs: 1800,
+  maxTriggersPerTick: 2,
 })
 
+scene({ view: 'splats', pointSize: 0.05, autoRotate: 0.006, background: '#05060a' })
+
 effects({
-  type: 'whirlwind',
-  strength: 0.85,
-  speed: 1.2,
-  colorShift: 0.35,
+  type: '${type}',
+  strength: ${strength},
+  speed: ${speed},
+  colorShift: ${colorShift},
   origin: [0, 0, 0],
 })
 
-camera({ mode: 'orbit', moveSpeed: 2.5, wasd: true })
-
-// Guarda dos enfoques y alterna entre ellos.
-camPreset('cerca', { position: [0.8, 0.4, 2.2], target: [0, 0, 0] })
-camPreset('lejos', { position: [2.4, 1.2, 5.5], target: [0, 0.2, 0] })
+camera({ mode: 'orbit', moveSpeed: 1.2, wasd: true })
 
 synth((el, v) => {
-  const env = el.adsr(0.004, v.decay, 0.05, el.mul(v.decay, 1.1), v.gate)
-  const tone = el.blepsaw(v.freq)
-  const filtered = el.lowpass(el.add(200, el.mul(v.tone, 4200)), 1.2, tone)
-  return el.mul(filtered, env, v.amp, 0.18)
+  const env = el.adsr(0.01, v.decay, 0.1, el.mul(v.decay, 1.4), v.gate)
+  const tone = el.cycle(v.freq)
+  const soft = el.lowpass(el.add(180, el.mul(v.tone, 2800)), 0.9, tone)
+  return el.mul(soft, env, v.amp, 0.16)
 })
 
-master((el, L, R) => [el.tanh(el.mul(L, 1.15)), el.tanh(el.mul(R, 1.15))])
+master((el, L, R) => [el.tanh(el.mul(L, 1.05)), el.tanh(el.mul(R, 1.05))])
 
-let lastSlot = -1
 animate((t, dt, api) => {
-  // Pulso suave de la intensidad del efecto.
-  api.effects.applyConfig({ strength: 0.55 + 0.35 * Math.sin(t * 0.4) })
-  // Cada 8 segundos salta entre los dos presets de cámara.
-  const slot = Math.floor(t / 8) % 2
-  if (slot !== lastSlot) {
-    lastSlot = slot
-    api.cam.goTo(slot === 0 ? 'cerca' : 'lejos', 2.5)
-  }
+  api.effects.applyConfig({ strength: ${strength * 0.75} + ${strength * 0.25} * Math.sin(t * 0.12) })
 })
 `;
+}
+
+const FX_WHIRLWIND = visualEffectPreset("whirlwind", "Torbellino", 0.65, 0.12, 0.3);
+const FX_IMPLOSION = visualEffectPreset("implosion", "Implosión", 0.55, 0.16, 0.12, "dorian");
+const FX_EXPLOSION = visualEffectPreset("explosion", "Explosión suave", 0.5, 0.14, 0.22, "pentatonic");
+const FX_GRAVITY = visualEffectPreset("gravity", "Gravedad", 0.5, 0.12, 0.05, "minor");
+const FX_MELT = visualEffectPreset("melt", "Fusión", 0.55, 0.1, 0.28, "phrygian");
+const FX_PULSE = visualEffectPreset("pulse", "Pulso", 0.4, 0.18, 0.15, "lydian");
+const FX_WAVE = visualEffectPreset("wave", "Onda", 0.4, 0.14, 0.08, "whole");
 
 const MORPH_DEMO = `// Morph entre splats de la biblioteca
 // 1) Añade al menos dos archivos con "Añadir splats"
@@ -337,7 +345,13 @@ export const BUILTIN_PRESETS: Preset[] = [
   { id: "drone", name: "Drone sostenido", code: DRONE, builtin: true, kind: "sonic" },
   { id: "granular", name: "Haz granular", code: GRANULAR, builtin: true, kind: "sonic" },
   { id: "layers", name: "Capas + seq", code: LAYERS_SONIC, builtin: true, kind: "sonic" },
-  { id: "torbellino", name: "Torbellino + cámara", code: TORBELLINO, builtin: true, kind: "visual" },
+  { id: "fx-whirlwind", name: "FX Torbellino", code: FX_WHIRLWIND, builtin: true, kind: "visual" },
+  { id: "fx-implosion", name: "FX Implosión", code: FX_IMPLOSION, builtin: true, kind: "visual" },
+  { id: "fx-explosion", name: "FX Explosión", code: FX_EXPLOSION, builtin: true, kind: "visual" },
+  { id: "fx-gravity", name: "FX Gravedad", code: FX_GRAVITY, builtin: true, kind: "visual" },
+  { id: "fx-melt", name: "FX Fusión", code: FX_MELT, builtin: true, kind: "visual" },
+  { id: "fx-pulse", name: "FX Pulso", code: FX_PULSE, builtin: true, kind: "visual" },
+  { id: "fx-wave", name: "FX Onda", code: FX_WAVE, builtin: true, kind: "visual" },
   { id: "morph", name: "Morph entre splats", code: MORPH_DEMO, builtin: true, kind: "visual" },
 ];
 

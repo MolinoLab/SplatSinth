@@ -15,10 +15,10 @@ npm run dev
 
 Vite imprime la URL (normalmente `http://localhost:5173`). Ábrela en el navegador.
 
-1. Elige una **demo** del desplegable de biblioteca (esfera/rejilla) o pulsa **Añadir splats** / arrastra un `.ply` / `.spz`.
+1. Pulsa **Añadir ejemplos** o **Añadir splats** / arrastra un `.ply` / `.spz`.
 2. Pulsa **Activar audio** (el navegador exige un gesto antes de abrir el `AudioContext`).
 3. El haz recorre el splat: cada gaussiana que toca suena.
-4. Edita el sketch a la derecha y pulsa **Aplicar** o **Ctrl+Enter**.
+4. Edita el sketch a la derecha y pulsa **Aplicar** o **Ctrl+Enter**. **Ctrl+Espacio** abre sugerencias (escalas, params…).
 
 Otros comandos npm:
 
@@ -86,50 +86,151 @@ Sobre eso hay tres frenos, porque una lámina cruzando un splat denso puede toca
 
 ## Comandos del sketch
 
-Fuente canónica: [src/sketch/reference.ts](src/sketch/reference.ts) (también el botón *Comandos* de la UI y el autocompletado con espacio). Nada se aplica hasta **Aplicar** / **Ctrl+Enter**.
+Misma fuente que el botón *Comandos* de la web: [src/sketch/reference.ts](src/sketch/reference.ts). En el editor, **Ctrl+Espacio** (o `:` / `util.scales.`) abre el menú contextual. Nada se aplica hasta **Aplicar** / **Ctrl+Enter**.
 
-### Funciones
+### `beam({ ... })`
 
-| Comando | Qué hace |
+Configura el disparador que recorre el splat.
+
+| Parámetro | Tipo | Por defecto | Descripción |
+|---|---|---|---|
+| `shape` | `'sheet' \| 'beam'` | `'sheet'` | Lámina que barre toda la sección, o haz cilíndrico que toca menos puntos. |
+| `sweepAxis` | `'x' \| 'y' \| 'z'` | `'y'` | Eje que recorre el disparador. |
+| `beamAxis` | `'x' \| 'y' \| 'z'` | `'x'` | Orientación del cilindro. Solo se usa con shape `'beam'`. |
+| `speed` | número | `0.04` | Recorridos completos por segundo. Por defecto lento (meditativo). |
+| `radius` | número 0..0.5 | `0.015` | Grosor de la lámina o radio del haz, relativo al tamaño de la escena. |
+| `mode` | `'pingpong' \| 'loop'` | `'pingpong'` | Rebota en los extremos, o vuelve a empezar por el principio. |
+| `color` | color | `'#ff2a2a'` | Color del disparador. |
+| `intensity` | número 0..12 | `2.2` | Cuánto brillan los splats que el disparador atraviesa. |
+| `offset` | número 0..1 | `0.5` | Posición del haz en el eje restante. Solo con shape `'beam'`. |
+| `running` | `true \| false` | `true` | Pone en marcha o detiene el recorrido. |
+
+### `mapping({ ... })`
+
+Traduce cada gaussiana a sonido: altura, intensidad, timbre, paneo y duración.
+
+| Parámetro | Tipo | Por defecto | Descripción |
+|---|---|---|---|
+| `baseNote` | nota MIDI 0..108 | `36` | Nota de referencia del registro grave. |
+| `scale` | array de semitonos | `util.scales.minorPentatonic` | Grados de la escala. Autocompletado: `util.scales.*` |
+| `octaves` | entero 1..8 | `4` | Octavas que abarca el mapeo de altura. |
+| `pitchFrom` | campo | `'hue'` | Qué propiedad decide la altura (`hue`, `sat`, `lum`, `size`, `opacity`, `x`, `y`, `z`, `fixed`). |
+| `ampFrom` | campo | `'size'` | Qué propiedad decide la intensidad. |
+| `toneFrom` | campo | `'lum'` | Qué propiedad decide el brillo (filtro). |
+| `panFrom` | campo | `'x'` | Qué propiedad decide la posición estéreo. |
+| `decayFrom` | campo | `'size'` | Qué propiedad decide la duración. |
+| `decay` | `[corto, largo]` s | `[0.4, 4.5]` | Rango de duración de las voces. |
+| `gain` | número 0..1 | `0.65` | Ganancia general de la salida. |
+| `density` | número 0..1 | `0.03` | Proporción de puntos que llega a sonar. |
+| `maxVoices` | entero 1..96 | `32` | Voces simultáneas. |
+| `retriggerMs` | milisegundos | `1600` | Tiempo hasta que un punto puede volver a sonar. |
+| `maxTriggersPerTick` | entero 1..32 | `3` | Tope duro de disparos por frame. |
+
+### `scene({ ... })`
+
+Ajustes visuales: modo de vista, fondo y destellos.
+
+| Parámetro | Tipo | Por defecto | Descripción |
+|---|---|---|---|
+| `view` | `'splats' \| 'points'` | `'splats'` | Gaussianas completas, o nube de puntos. |
+| `pointSize` | píxeles 0.01..0.25 | `0.05` | Tamaño de cada punto (centro del slider en Ajustes). |
+| `pointOpacity` | número 0..1 | `0.9` | Opacidad de los puntos. |
+| `pointAttenuation` | número 0..1 | `1` | 0 deja todos iguales, 1 los encoge con la distancia. |
+| `pointRound` | `true \| false` | `true` | Puntos redondos o cuadrados. |
+| `background` | color | `'#05060a'` | Color de fondo. |
+| `autoRotate` | rad/s | `0` | Giro automático de la cámara. |
+| `exposure` | número 0.05..4 | `1` | Exposición del render. |
+| `flashSize` | número | `1` | Tamaño del destello de cada impacto. |
+| `flashDecay` | segundos | `0.7` | Cuánto tarda en apagarse el destello. |
+| `flip` | `true \| false` | `true` | Giro 180° en X. Desactívalo si el splat sale boca abajo. |
+| `splatScale` | número | `1` | Escala global de los splats. |
+
+### `effects({ ... })` \| `effects('whirlwind')`
+
+Deformación GPU: `implosion`, `explosion`, `gravity`, `melt`, `whirlwind`, `pulse`, `wave`.
+
+| Parámetro | Tipo | Por defecto | Descripción |
+|---|---|---|---|
+| `type` | efecto | `'none'` | También `effects('whirlwind')` o `util.effects.whirlwind`. |
+| `strength` | número 0..2 | `0.45` | Intensidad. |
+| `speed` | número | `0.22` | Velocidad temporal (baja = meditativo). |
+| `colorShift` | número 0..1 | `0` | Rotación de tono. |
+| `origin` | `[x,y,z]` | `[0,0,0]` | Centro del efecto. |
+
+### `camera({ ... })`
+
+| Parámetro | Tipo | Por defecto | Descripción |
+|---|---|---|---|
+| `mode` | `'orbit' \| 'fps'` | `'orbit'` | Orbit con ratón, o FPS con WASD. |
+| `moveSpeed` | número | `2.5` | Velocidad de WASD. |
+| `wasd` | `true \| false` | `true` | Se ignora mientras escribes o con el teclado musical ON. |
+
+### Otras funciones
+
+| Comando | Descripción |
 |---|---|
-| `beam({ ... })` | Disparador: forma, eje, velocidad, radio, color, pingpong/loop |
-| `mapping({ ... })` | Mapeo splat → sonido: escala, densidad, voces, gain… |
-| `scene({ ... })` | Vista (`splats` / `points`), fondo, flip, tamaño de puntos… |
-| `effects({ ... })` o `effects('whirlwind')` | Deformación GPU: implosion, explosion, gravity, melt, whirlwind, pulse, wave |
-| `camera({ ... })` | `orbit` o `fps` (WASD), velocidad |
-| `camPreset(name, { position, target })` | Guarda un enfoque de cámara |
-| `camGo(name, duration)` | Transición a ese enfoque |
-| `library({ active, morphDuration })` | Splat activo de la biblioteca |
-| `morph({ to, duration })` | Crossfade a otro splat del array |
-| `layers([ ... ])` | Capas sonoras: hits, drone, pad, noise (escala, raíz, delay, reverb, visual, MIDI) |
-| `sequencer({ steps, bpm, tracks })` | Secuenciador ASCII tipo Orca enrutado a capas |
-| `synth((el, v) => …)` | Voz de Elementary (capa hits) |
-| `master((el, L, R) => [L, R])` | Cadena final estéreo |
-| `animate((t, dt, api) => …)` | Cada frame: `api.beam`, `api.cam`, `api.effects`, `api.library`, `api.morphTo`… |
-| `log(...)` | Mensaje en la barra de estado al aplicar |
+| `library({ active, morphDuration })` | Elige el splat activo. Decodificación bajo demanda. |
+| `morph({ to, duration })` | Crossfade hacia otro splat de la biblioteca. |
+| `layers([{ id, kind, scale, root, ... }])` | Capas: hits, drone, pad, noise. Escala/raíz, FX y visual (`rain`, `glow`, `echo`, `vibrate`). |
+| `sequencer({ steps, bpm, tracks })` | Secuenciador ASCII tipo Orca. Patterns `0-9/*` enrutados a capas. |
+| `camPreset(name, { position, target, fov })` | Guarda una localización de cámara. |
+| `camGo(name, duration)` | Transiciona a un preset de cámara. |
+| `synth((el, v) => señal)` | Define la voz. Mono se panea solo; o `[L, R]`. |
+| `master((el, L, R) => [L, R])` | Cadena final sobre la suma de voces. |
+| `animate((t, dt, api) => {})` | Cada frame. En `api`: beam, mapping, scene, cam, effects, library, morphTo, THREE. |
+| `log(...)` | Mensaje en la barra de estado al aplicar. |
 
-### Parámetros habituales
+### `v` — la voz dentro de `synth`
 
-**beam** — `shape` (`sheet` \| `beam`), `sweepAxis` / `beamAxis` (`x`\|`y`\|`z`), `speed`, `radius`, `mode` (`pingpong`\|`loop`), `color`, `intensity`, `offset`, `running`
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `gate` | señal | Puerta 0/1. Alimenta las envolventes. |
+| `freq` | señal | Frecuencia en Hz. |
+| `amp` | señal | Amplitud 0..1. |
+| `pan` | señal | Estéreo 0..1. |
+| `tone` | señal | Brillo 0..1 (corte). |
+| `decay` | señal | Duración en segundos. |
+| `index` | número | Índice de la voz en el pool. |
+| `k` | función | Clave única por voz. Obligatoria en `noise`, `delay`, `rand`, `phasor`. |
 
-**mapping** — `baseNote`, `scale` (p. ej. `util.scales.minorPentatonic`), `octaves`, `pitchFrom` / `ampFrom` / `toneFrom` / `panFrom` / `decayFrom` (`hue`, `sat`, `lum`, `size`, `opacity`, `x`, `y`, `z`, `fixed`), `decay`, `gain`, `density`, `maxVoices`, `retriggerMs`, `maxTriggersPerTick`
+### `el` — nodos de Elementary más usados
 
-**scene** — `view`, `pointSize`, `pointOpacity`, `pointAttenuation`, `pointRound`, `background`, `autoRotate`, `exposure`, `flashSize`, `flashDecay`, `flip`, `splatScale`
+| Nodo | Firma | Descripción |
+|---|---|---|
+| `cycle` | `el.cycle(hz)` | Oscilador senoidal. |
+| `blepsaw` | `el.blepsaw(hz)` | Diente de sierra sin aliasing. |
+| `blepsquare` | `el.blepsquare(hz)` | Onda cuadrada sin aliasing. |
+| `bleptriangle` | `el.bleptriangle(hz)` | Onda triangular sin aliasing. |
+| `noise` | `el.noise({ key })` | Ruido blanco. Necesita clave por voz. |
+| `pinknoise` | `el.pinknoise({ key })` | Ruido rosa. Necesita clave por voz. |
+| `adsr` | `el.adsr(a, d, s, r, gate)` | Envolvente ADSR. |
+| `svf` | `el.svf({ mode }, fc, q, x)` | Filtro de variables de estado. |
+| `lowpass` / `highpass` | `el.lowpass(fc, q, x)` | Biquad. |
+| `delay` | `el.delay({ size, key }, len, fb, x)` | Retardo con realimentación. |
+| `ms2samps` | `el.ms2samps(ms)` | Milisegundos → muestras. |
+| `mul` / `add` / `sub` / `div` | | Aritmética de señales. |
+| `tanh` | `el.tanh(x)` | Saturación suave. |
+| `sm` | `el.sm(x)` | Suaviza saltos (anti-clic). |
+| `dcblock` | `el.dcblock(x)` | Elimina DC. |
+| `phasor` | `el.phasor(hz)` | Rampa 0..1. Necesita clave por voz. |
+| `select` | `el.select(g, a, b)` | Elige entre dos señales según una puerta. |
 
-**effects** — `type`, `strength`, `speed`, `colorShift`, `origin`
+### `util` — ayudas
 
-**camera** — `mode`, `moveSpeed`, `wasd`
-
-**layers** (por capa) — `id`, `kind`, `enabled`, `gain`, `instrument`, `root` (MIDI), `scale` (`minorPentatonic`, `phrygian`, `chromatic`…), `delay`, `reverb`, `midiChannel`, `visual` (`hits`, `rain`, `glow`, `echo`, `vibrate`)
+| Entrada | Descripción |
+|---|---|
+| `util.scales` | Escalas: `major`, `minor`, `dorian`, `phrygian`, `lydian`, `pentatonic`, `minorPentatonic`, `hirajoshi`, `whole`, `chromatic`. |
+| `util.midi` | Nota MIDI → frecuencia. |
+| `util.clamp` / `util.lerp` / `util.rand` / `util.ms` | Utilidades numéricas. |
 
 ### Ejemplo mínimo
 
 ```js
-beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.09, radius: 0.012 })
+beam({ shape: 'sheet', sweepAxis: 'y', speed: 0.04, radius: 0.012 })
 
-mapping({ baseNote: 36, scale: util.scales.minorPentatonic, pitchFrom: 'hue', density: 0.05 })
+mapping({ baseNote: 36, scale: util.scales.minorPentatonic, pitchFrom: 'hue', density: 0.03 })
 
-scene({ view: 'splats', background: '#05060a' })
+scene({ view: 'splats', pointSize: 0.05, background: '#05060a' })
 
 synth((el, v) => {
   const env = el.adsr(0.003, v.decay, 0, el.mul(v.decay, 1.2), v.gate)
@@ -139,17 +240,13 @@ synth((el, v) => {
 master((el, L, R) => [L, R])
 ```
 
-`synth` recibe `v.gate`, `v.freq`, `v.amp`, `v.pan`, `v.tone`, `v.decay`. Mono se panea solo; `[L, R]` lo controlas tú.
-
-**Nodos con estado** (`noise`, `delay`, `rand`, `phasor`) necesitan clave por voz: `el.noise({ key: v.k('ruido') })`.
-
 ### Presets
 
-Desplegable del sketch: grupo **Sonoros** (campanas, drone, granular, capas+seq) y **Visuales** (torbellino, morph). *Guardar* persiste el sketch en este navegador.
+Desplegable del sketch: **Sonoros** (campanas, drone, granular, capas+seq) y **Visuales** (un preset por efecto: torbellino, implosión, explosión, gravedad, fusión, pulso, onda + morph). *Guardar* persiste el sketch en este navegador.
 
 ## Los dos modos de visualización
 
-En *Ajustes* (o con `scene({ view: 'points' })`) eliges gaussianas o nube de **solo posición y color**. El tamaño/opacidad no se dibujan pero siguen alimentando al sinte. `pointSize` por defecto es pequeño (~0.33).
+En *Ajustes* (o con `scene({ view: 'points' })`) eliges gaussianas o nube de **solo posición y color**. El tamaño/opacidad no se dibujan pero siguen alimentando al sinte. `pointSize` por defecto es `0.05` (centro del slider).
 
 ## Formatos
 
@@ -161,7 +258,7 @@ La mayoría de los `.ply` de 3DGS traen el eje Y invertido respecto a Three, as�
 
 ## Rendimiento
 
-La barra inferior muestra muestras dibujadas, puntos sonificados, voces activas, fps y el tiempo que tarda cada reconciliación del grafo (`dsp`). Si ese número se dispara, baja `maxVoices` o simplifica el `synth`.
+La barra inferior muestra voces, fps, tiempo de reconciliación del audio (`dsp`), estimación de VRAM GPU (`vram`), MIDI y nivel. Si `dsp` se dispara, baja `maxVoices` o simplifica el `synth`.
 
 Si el audio satura, el limitador blando del master lo contiene, pero es señal de que sobra `density` o falta `retriggerMs`.
 
