@@ -125,6 +125,7 @@ mapping({
   toneFrom: '${mapping.toneFrom}',
   panFrom: '${mapping.panFrom}',
   density: ${mapping.density},
+  sonicCloud: ${project.mapping.sonicCloud ?? 1},
   maxVoices: ${mapping.maxVoices},
   gain: ${mapping.gain},
 })

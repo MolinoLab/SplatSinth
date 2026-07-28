@@ -28,6 +28,8 @@ export function PatchPanel({
   const patch = <K extends keyof ProjectState>(key: K, value: ProjectState[K]) =>
     onChange({ ...project, [key]: value });
 
+  const patchMapping = (partial: Partial<ProjectState["mapping"]>) =>
+    patch("mapping", { ...project.mapping, ...partial });
   const patchBeam = (partial: Partial<ProjectState["beam"]>) =>
     patch("beam", { ...project.beam, ...partial });
   const patchScene = (partial: Partial<ProjectState["scene"]>) =>
@@ -114,6 +116,22 @@ export function PatchPanel({
               onChange={(e) => patchBeam({ color: e.target.value })}
             />
           </label>
+        </div>
+
+        <div className="patch-node">
+          <h4>Nube sonora (haz)</h4>
+          <Slider
+            label="densidad nube"
+            value={project.mapping.sonicCloud ?? 1}
+            min={0.05}
+            max={1}
+            step={0.01}
+            onChange={(sonicCloud) => patchMapping({ sonicCloud })}
+          />
+          <p className="hint patch-hint">
+            Fracción de puntos usados para sonificar el barrido. Baja el valor si bajan los FPS con
+            Play.
+          </p>
         </div>
 
         <div className="patch-node">

@@ -1,4 +1,9 @@
 import type { ViewMode } from "../core/types";
+import {
+  defaultSamplePointsForTier,
+  detectGpuProfile,
+  type GpuTier,
+} from "../core/gpuProfile";
 import { readJsonCookie, writeJsonCookie } from "./cookies";
 
 export type UiSettings = {
@@ -27,13 +32,27 @@ export type UiSettings = {
   morphDuration: number;
   /** Si false, los cambios de splat son instantáneos (duration 0). */
   morphEnabled: boolean;
+  /** Muestras extraídas al cargar cada splat (visual + base sonora). */
+  maxSamplePoints: number;
+  /** Tier detectado al cargar (solo informativo). */
+  gpuTier: GpuTier;
+  gpuRendererLabel: string;
 };
 
 const COOKIE_KEY = "splatsinth.ui";
 /** Migración desde localStorage si existía. */
 const LEGACY_KEY = "splatsinth.ui";
 
-export const defaultUiSettings = (): UiSettings => ({
+let cachedGpuProfile: ReturnType<typeof detectGpuProfile> | null = null;
+
+function gpuProfileOnce() {
+  if (!cachedGpuProfile) cachedGpuProfile = detectGpuProfile();
+  return cachedGpuProfile;
+}
+
+export const defaultUiSettings = (): UiSettings => {
+  const gpu = gpuProfileOnce();
+  return {
   accent: "#ff2a4a",
   panelOpacity: 0.5,
   editorWidth: 560,
@@ -42,12 +61,16 @@ export const defaultUiSettings = (): UiSettings => ({
   tracksWidth: 340,
   postWidth: 280,
   seqHeight: 200,
-  viewMode: "splats",
+  viewMode: "points",
   pointSize: 0.003,
   masterVolume: 0.7,
   morphDuration: 2,
   morphEnabled: false,
-});
+  maxSamplePoints: defaultSamplePointsForTier(gpu.tier),
+  gpuTier: gpu.tier,
+  gpuRendererLabel: gpu.label,
+};
+};
 
 export function loadUiSettings(): UiSettings {
   const defaults = defaultUiSettings();
@@ -58,7 +81,13 @@ export function loadUiSettings(): UiSettings {
         pointSizeMult?: number;
         computerKeyboard?: boolean;
       };
-      return { ...defaults, ...rest };
+      return {
+        ...defaults,
+        ...rest,
+        gpuTier: rest.gpuTier ?? defaults.gpuTier,
+        gpuRendererLabel: rest.gpuRendererLabel ?? defaults.gpuRendererLabel,
+        maxSamplePoints: rest.maxSamplePoints ?? defaults.maxSamplePoints,
+      };
     }
 
     const raw = localStorage.getItem(LEGACY_KEY);
@@ -135,6 +164,14 @@ export function applyUiSettings(settings: UiSettings): void {
   root.setProperty("--post-width", `${settings.postWidth}px`);
   root.setProperty("--seq-height", `${settings.seqHeight}px`);
 }
+
+export {
+  samplePointsToSlider,
+  sliderToSamplePoints,
+  defaultSamplePointsForTier,
+  SAMPLE_POINTS_MIN,
+  SAMPLE_POINTS_MAX,
+} from "../core/gpuProfile";
 
 export const ACCENT_SWATCHES = [
   "#ff2a4a",

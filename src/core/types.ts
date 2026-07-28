@@ -45,6 +45,8 @@ export type MappingConfig = {
   gain: number;
   /** Proporción de puntos que llegan a sonar, 0..1. */
   density: number;
+  /** Fracción 0..1 de la nube sonora del haz (menos puntos = menos CPU). */
+  sonicCloud: number;
   maxVoices: number;
   /** Tiempo mínimo antes de que un mismo punto vuelva a sonar. */
   retriggerMs: number;

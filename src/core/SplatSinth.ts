@@ -13,6 +13,7 @@ import { defaultEffect, EFFECT_PRESETS, type EffectConfig } from "../scene/Splat
 import { defaultPostFx, type PostFxConfig } from "../scene/PostFx";
 import { evaluateSketch, validateMaster, validateSynth } from "../sketch/runtime";
 import { MAX_SONIC_POINTS, defaultBeam, defaultMapping, defaultScene } from "./defaults";
+import { SAMPLE_POINTS_MAX, SAMPLE_POINTS_MIN } from "./gpuProfile";
 import { defaultLayers, normalizeLayer, type MidiVisualMode, type SoundLayer } from "./layers";
 import type { EffectType } from "../scene/SplatEffects";
 import { scaleDegreeToMidi } from "./music";
@@ -568,6 +569,23 @@ export class SplatSinth {
     this.scene.applyConfig(this.sceneConfig);
   }
 
+  /** Límite de muestras al cargar / re-muestrear splats (Ajustes). */
+  setMaxSamplePoints(max: number): void {
+    this.scene.library.maxSamplePoints = Math.round(
+      clamp(max, SAMPLE_POINTS_MIN, SAMPLE_POINTS_MAX),
+    );
+  }
+
+  /** Re-extrae muestras con el límite actual y reconstruye la nube sonora. */
+  resampleLibrary(): void {
+    this.scene.library.resampleAllLoaded();
+    if (this.scene.library.active) this.adoptActive();
+  }
+
+  rebuildSonicCloud(): void {
+    this.deriveFromSamples();
+  }
+
   /** Volumen de salida de la UI (se multiplica por mapping.gain). */
   setOutputVolume(volume: number): void {
     this.outputVolume = clamp(volume, 0, 1);
@@ -585,7 +603,9 @@ export class SplatSinth {
 
   private deriveFromSamples(): void {
     this.scene.setSamples(this.samples);
-    this.cloud = SonicCloud.fromSamples(this.samples, MAX_SONIC_POINTS);
+    const frac = clamp(this.mapping.sonicCloud ?? 1, 0.05, 1);
+    const cap = Math.max(500, Math.round(MAX_SONIC_POINTS * frac));
+    this.cloud = SonicCloud.fromSamples(this.samples, cap);
     this.cloud.sortAlong(this.beam.sweepAxis);
     this.trigger.reset();
     this.patch({
@@ -710,6 +730,7 @@ export class SplatSinth {
     this.beam.offset = clamp(this.beam.offset, 0, 1);
 
     this.mapping.density = clamp(this.mapping.density, 0, 1);
+    this.mapping.sonicCloud = clamp(this.mapping.sonicCloud ?? 1, 0.05, 1);
     this.mapping.maxVoices = Math.round(clamp(this.mapping.maxVoices, 1, 96));
     this.mapping.maxTriggersPerTick = Math.round(clamp(this.mapping.maxTriggersPerTick, 1, 32));
     this.mapping.retriggerMs = clamp(this.mapping.retriggerMs, 0, 60000);
@@ -727,7 +748,9 @@ export class SplatSinth {
     this.sceneConfig.pointSize = clamp(this.sceneConfig.pointSize, 0.0005, 32);
     this.sceneConfig.pointOpacity = clamp(this.sceneConfig.pointOpacity, 0.02, 1);
     this.sceneConfig.pointAttenuation = clamp(this.sceneConfig.pointAttenuation, 0, 1);
-    if (this.sceneConfig.view !== "points") this.sceneConfig.view = "splats";
+    if (this.sceneConfig.view !== "points" && this.sceneConfig.view !== "splats") {
+      this.sceneConfig.view = "points";
+    }
 
     this.effectConfig.strength = clamp(this.effectConfig.strength, 0, 2);
     this.effectConfig.speed = clamp(this.effectConfig.speed, 0, 8);

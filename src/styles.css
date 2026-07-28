@@ -129,7 +129,8 @@ body {
   display: block;
 }
 
-.toolbar .btn-label {
+/* Etiquetas: ocultas salvo hover; clic con ratón no deja el texto abierto. */
+.btn-label {
   display: inline-block;
   max-width: 0;
   opacity: 0;
@@ -144,10 +145,39 @@ body {
 }
 
 .toolbar button:hover .btn-label,
-.toolbar button:focus-visible .btn-label {
+.panel-head button:hover .btn-label,
+.seq-head button:hover .btn-label,
+.toolbar button:focus-visible .btn-label,
+.panel-head button:focus-visible .btn-label,
+.seq-head button:focus-visible .btn-label {
   max-width: 12rem;
   opacity: 1;
   margin-left: 6px;
+}
+
+.toolbar button:focus:not(:focus-visible) .btn-label,
+.panel-head button:focus:not(:focus-visible) .btn-label,
+.seq-head button:focus:not(:focus-visible) .btn-label {
+  max-width: 0;
+  opacity: 0;
+  margin-left: 0;
+}
+
+.panel-head button,
+.seq-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+.seq-tap-mark {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .toolbar button.icon-btn {
@@ -308,6 +338,39 @@ button.active {
 
 .accent-label {
   color: var(--accent-text);
+}
+
+.panel.sketch-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  width: 100vw !important;
+  max-width: none;
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-panels .panel.sketch-wide {
+  flex: 1 1 auto;
+  width: auto !important;
+  min-width: min(var(--editor-width), calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+
+.panel.sketch-fullscreen .panel-head {
+  background: rgba(10, 12, 20, 0.55);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel.sketch-fullscreen .panel-editor {
+  flex: 1;
+  min-height: 0;
 }
 
 .panel.collapsed {
@@ -971,6 +1034,17 @@ input[type="range"] {
 
 .warn-hint {
   color: var(--accent-text) !important;
+}
+
+.seq-head {
+  flex-wrap: wrap;
+}
+
+.seq-tap {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
 }
 
 .seq-help {

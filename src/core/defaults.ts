@@ -24,7 +24,7 @@ export const defaultBeam = (): BeamConfig => ({
   color: "#ff2a2a",
   intensity: 2.2,
   offset: 0.5,
-  enabled: true,
+  enabled: false,
   // El haz es una fuente más, no el centro del flujo DAW.
   running: false,
 });
@@ -41,13 +41,14 @@ export const defaultMapping = (): MappingConfig => ({
   decayFrom: "size",
   gain: 0.65,
   density: 0.03,
+  sonicCloud: 1,
   maxVoices: 32,
   retriggerMs: 1600,
   maxTriggersPerTick: 3,
 });
 
 export const defaultScene = (): SceneConfig => ({
-  view: "splats",
+  view: "points",
   pointSize: 0.003,
   pointOpacity: 0.9,
   pointAttenuation: 1,

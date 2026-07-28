@@ -44,6 +44,8 @@ export class SplatLibrary {
   readonly entries: LibraryEntry[] = [];
   activeIndex = -1;
   morph: MorphState | null = null;
+  /** Máximo de muestras al decodificar / re-muestrear splats. */
+  maxSamplePoints = MAX_SAMPLE_POINTS;
 
   private scene: THREE.Scene;
   private orient: OrientFn;
@@ -159,8 +161,16 @@ export class SplatLibrary {
     entry.numSplats = mesh.numSplats ?? mesh.packedSplats?.numSplats ?? 0;
 
     await new Promise((resolve) => setTimeout(resolve, 16));
-    entry.samples = sampleSplats([mesh], MAX_SAMPLE_POINTS);
+    entry.samples = sampleSplats([mesh], this.maxSamplePoints);
     return entry;
+  }
+
+  /** Vuelve a extraer muestras de todos los splats ya cargados en GPU. */
+  resampleAllLoaded(): void {
+    for (const entry of this.entries) {
+      if (!entry.mesh) continue;
+      entry.samples = sampleSplats([entry.mesh], this.maxSamplePoints);
+    }
   }
 
   private async buildProcedural(generator: "sphere" | "grid"): Promise<SplatMesh> {

@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { setCell, type SequencerState } from "../audio/Sequencer";
 import type { SoundLayer } from "../core/layers";
 import { clampSize, startResizeDrag } from "./resize";
+import { IconPlay, IconStop, IconAdd } from "./icons";
 
 type Props = {
   state: SequencerState;
@@ -80,6 +81,22 @@ export function SequencerPanel({
 
   const togglePlay = () => onToggleTransport();
 
+  const tapTimes = useRef<number[]>([]);
+
+  const tapTempo = () => {
+    const now = performance.now();
+    const taps = tapTimes.current;
+    if (taps.length > 0 && now - taps[taps.length - 1]! > 2000) taps.length = 0;
+    taps.push(now);
+    if (taps.length > 8) taps.shift();
+    if (taps.length < 2) return;
+    const intervals: number[] = [];
+    for (let i = 1; i < taps.length; i++) intervals.push(taps[i]! - taps[i - 1]!);
+    const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const bpm = Math.round(60000 / avg);
+    onChange({ ...state, bpm: Math.min(240, Math.max(40, bpm)) });
+  };
+
   return (
     <section className="seq-panel" style={{ height }}>
       <div
@@ -89,8 +106,9 @@ export function SequencerPanel({
       />
       <header className="seq-head">
         <span className="panel-title">Sequencer</span>
-        <button className={transportPlaying ? "active" : ""} onClick={togglePlay}>
-          {transportPlaying ? "Stop" : "Play"}
+        <button className={transportPlaying ? "active" : ""} onClick={togglePlay} title={transportPlaying ? "Stop" : "Play"}>
+          {transportPlaying ? <IconStop size={14} /> : <IconPlay size={14} />}
+          <span className="btn-label">{transportPlaying ? "Stop" : "Play"}</span>
         </button>
         <label className="inline-label">
           bpm
@@ -102,6 +120,10 @@ export function SequencerPanel({
             onChange={(e) => onChange({ ...state, bpm: Number(e.target.value) })}
           />
         </label>
+        <button type="button" className="seq-tap" onClick={tapTempo} title="Tap tempo (2–8 pulsos)">
+          <span className="seq-tap-mark">T</span>
+          <span className="btn-label">TAP</span>
+        </button>
         <label className="inline-label">
           steps
           <input
@@ -112,8 +134,9 @@ export function SequencerPanel({
             onChange={(e) => onChange({ ...state, steps: Number(e.target.value) })}
           />
         </label>
-        <button type="button" onClick={addTrack}>
-          + pista
+        <button type="button" onClick={addTrack} title="Añadir pista al secuenciador">
+          <IconAdd size={14} />
+          <span className="btn-label">+ pista</span>
         </button>
         <span className="hint">
           step <b>{currentStep}</b>

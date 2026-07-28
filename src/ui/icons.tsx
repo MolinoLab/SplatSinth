@@ -22,6 +22,19 @@ function Icon({ size = 15, children, ...rest }: IconProps & { children: ReactNod
   );
 }
 
+export const IconApply = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+);
+
+export const IconSave = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+    <path d="M17 21v-8H7v8M7 3v5h8" />
+  </Icon>
+);
+
 export const IconAdd = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 5v14M5 12h14" />
@@ -70,6 +83,18 @@ export const IconLoop = (p: IconProps) => (
     <path d="M20 8A8 8 0 1 0 18.5 17" />
     <path d="M7 23v-4h4" />
     <path d="M4 16a8 8 0 0 0 1.5-9" />
+  </Icon>
+);
+
+export const IconFullscreen = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+  </Icon>
+);
+
+export const IconFullscreenExit = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 14h3v3M20 10h-3V7M14 4h-3V1M10 20H7v-3" />
   </Icon>
 );
 

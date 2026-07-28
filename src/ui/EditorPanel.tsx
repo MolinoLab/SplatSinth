@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { monaco } from "./monaco";
 import type { Preset } from "../sketch/presets";
+import { IconFullscreen, IconFullscreenExit, IconApply, IconSave } from "./icons";
 
 const MIN_WIDTH = 320;
-const MAX_WIDTH = 1200;
 
 type Props = {
   value: string;
@@ -42,6 +43,10 @@ export function EditorPanel({
   onToggleHidden,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [viewportW, setViewportW] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1280,
+  );
   const isHidden = hidden || collapsed;
   const [selected, setSelected] = useState("");
   const [saving, setSaving] = useState(false);
@@ -76,6 +81,43 @@ export function EditorPanel({
     if (saving) nameInputRef.current?.focus();
   }, [saving]);
 
+  const widthBeforeFullscreen = useRef(width);
+
+  const exitFullscreen = useCallback(() => {
+    setFullscreen(false);
+    onWidthChange(widthBeforeFullscreen.current);
+  }, [onWidthChange]);
+
+  const enterFullscreen = () => {
+    widthBeforeFullscreen.current = width;
+    setFullscreen(true);
+  };
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        exitFullscreen();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen, exitFullscreen]);
+
+  useEffect(() => {
+    if (!fullscreen) widthBeforeFullscreen.current = width;
+  }, [width, fullscreen]);
+
+  useEffect(() => {
+    const onResize = () => setViewportW(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const maxEditorWidth = Math.max(MIN_WIDTH, viewportW - 32);
+  const isWide = !fullscreen && width >= maxEditorWidth * 0.92;
+
   /** Arrastre del borde izquierdo: el panel está anclado a la derecha. */
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -85,7 +127,7 @@ export function EditorPanel({
 
       const move = (e: PointerEvent) => {
         const next = window.innerWidth - e.clientX - 16;
-        onWidthChange(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+        onWidthChange(Math.min(maxEditorWidth, Math.max(MIN_WIDTH, next)));
       };
       const stop = () => {
         handle.releasePointerCapture(event.pointerId);
@@ -98,7 +140,7 @@ export function EditorPanel({
       handle.addEventListener("pointerup", stop);
       handle.addEventListener("pointercancel", stop);
     },
-    [onWidthChange],
+    [maxEditorWidth, onWidthChange],
   );
 
   const confirmSave = () => {
@@ -111,14 +153,19 @@ export function EditorPanel({
 
   const current = presets.find((p) => p.id === selected);
 
-  return (
+  const panel = (
     <section
-      className={[isHidden ? "panel collapsed" : "panel", flash ? "panel-flash" : ""]
+      className={[
+        isHidden ? "panel collapsed" : "panel",
+        fullscreen ? "sketch-fullscreen" : "",
+        isWide ? "sketch-wide" : "",
+        flash ? "panel-flash" : "",
+      ]
         .filter(Boolean)
         .join(" ")}
-      style={isHidden ? undefined : { width }}
+      style={isHidden || fullscreen || isWide ? undefined : { width }}
     >
-      {!isHidden && (
+      {!isHidden && !fullscreen && (
         <div className="resize-handle" onPointerDown={startResize} title="Arrastra para cambiar el ancho" />
       )}
 
@@ -181,16 +228,30 @@ export function EditorPanel({
             )}
 
             <button onClick={() => setSaving((s) => !s)} title="Guardar el sketch actual como preset">
-              Guardar
+              <IconSave size={14} />
+              <span className="btn-label">Guardar</span>
             </button>
-            <button className="primary" onClick={onApply}>
-              Aplicar <span className="hint">Ctrl+↵</span>
+            <button className="primary" onClick={onApply} title="Aplicar sketch (Ctrl+Enter)">
+              <IconApply size={14} />
+              <span className="btn-label">Aplicar</span>
             </button>
           </>
+        )}
+        {!isHidden && (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => (fullscreen ? exitFullscreen() : enterFullscreen())}
+            title={fullscreen ? "Salir de pantalla completa (Esc)" : "Pantalla completa"}
+            aria-label={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          >
+            {fullscreen ? <IconFullscreenExit size={16} /> : <IconFullscreen size={16} />}
+          </button>
         )}
         <button
           className={isHidden ? undefined : "icon-btn"}
           onClick={() => {
+            if (fullscreen) exitFullscreen();
             if (onToggleHidden) onToggleHidden();
             else setCollapsed((c) => !c);
           }}
@@ -263,4 +324,6 @@ export function EditorPanel({
       )}
     </section>
   );
+
+  return fullscreen ? createPortal(panel, document.body) : panel;
 }

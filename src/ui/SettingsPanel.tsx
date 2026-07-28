@@ -5,6 +5,11 @@ import {
   defaultUiSettings,
   pointSizeToSlider,
   sliderToPointSize,
+  samplePointsToSlider,
+  sliderToSamplePoints,
+  defaultSamplePointsForTier,
+  SAMPLE_POINTS_MIN,
+  SAMPLE_POINTS_MAX,
   type UiSettings,
 } from "./settings";
 import type { MidiHub } from "../audio/MidiHub";
@@ -74,6 +79,36 @@ export function SettingsPanel({
           onChange={(e) => patch({ pointSize: sliderToPointSize(Number(e.target.value)) })}
         />
         <p className="hint">Rango logarítmico 0.001 … 0.25. El teclado PC se arma por pista en Tracks.</p>
+      </div>
+
+      <div className="field">
+        <label htmlFor="samples">
+          Muestras al cargar splats <b>{settings.maxSamplePoints.toLocaleString()}</b>
+        </label>
+        <input
+          id="samples"
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={samplePointsToSlider(settings.maxSamplePoints)}
+          onChange={(e) =>
+            patch({ maxSamplePoints: sliderToSamplePoints(Number(e.target.value)) })
+          }
+        />
+        <p className="hint">
+          GPU detectada: <b>{settings.gpuTier}</b> ({settings.gpuRendererLabel}). Menos muestras =
+          menos RAM y carga al cargar; vuelve a abrir o cambia de splat para re-muestrear. Rango{" "}
+          {SAMPLE_POINTS_MIN.toLocaleString()}–{SAMPLE_POINTS_MAX.toLocaleString()}.
+        </p>
+        <button
+          type="button"
+          onClick={() =>
+            patch({ maxSamplePoints: defaultSamplePointsForTier(settings.gpuTier) })
+          }
+        >
+          Usar recomendado para esta GPU
+        </button>
       </div>
 
       <div className="field">

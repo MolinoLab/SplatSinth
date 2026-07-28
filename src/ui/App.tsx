@@ -98,6 +98,7 @@ export function App() {
   const presets = useMemo(() => [...BUILTIN_PRESETS, ...userPresets], [userPresets]);
 
   const morphMs = settings.morphEnabled ? settings.morphDuration : 0;
+  const maxSamplesRef = useRef(settings.maxSamplePoints);
 
   useEffect(() => {
     applyUiSettings(settings);
@@ -108,7 +109,24 @@ export function App() {
     instance.setView(settings.viewMode);
     instance.setPointSize(settings.pointSize);
     instance.setOutputVolume(settings.masterVolume);
+    setProject((p) =>
+      p.scene.view === settings.viewMode && p.scene.pointSize === settings.pointSize
+        ? p
+        : { ...p, scene: { ...p.scene, view: settings.viewMode, pointSize: settings.pointSize } },
+    );
   }, [settings]);
+
+  useEffect(() => {
+    const instance = appRef.current;
+    if (!instance) return;
+    if (maxSamplesRef.current === settings.maxSamplePoints) {
+      instance.setMaxSamplePoints(settings.maxSamplePoints);
+      return;
+    }
+    maxSamplesRef.current = settings.maxSamplePoints;
+    instance.setMaxSamplePoints(settings.maxSamplePoints);
+    instance.resampleLibrary();
+  }, [settings.maxSamplePoints]);
 
   useEffect(() => {
     if (!viewportRef.current) return;
@@ -117,6 +135,8 @@ export function App() {
     const unsubscribe = instance.subscribe(setStatus);
     const initial = localStorage.getItem(SKETCH_KEY) ?? DEFAULT_SKETCH;
     instance.setAccentColor(settings.accent);
+    instance.setMaxSamplePoints(settings.maxSamplePoints);
+    maxSamplesRef.current = settings.maxSamplePoints;
     instance.applySketch(initial);
     instance.setView(settings.viewMode);
     instance.setPointSize(settings.pointSize);
@@ -163,6 +183,7 @@ export function App() {
         if (next.beam.color) instance.setBeamColor(next.beam.color);
         else instance.setAccentColor(settings.accent);
         Object.assign(instance.sceneConfig, next.scene);
+        Object.assign(instance.mapping, next.mapping);
         Object.assign(instance.effectConfig, next.effects);
         Object.assign(instance.postFxConfig, next.postFx);
         Object.assign(instance.cameraConfig, next.camera);
@@ -172,7 +193,14 @@ export function App() {
         instance.scene.cam.applyConfig(instance.cameraConfig);
         instance.setPerformanceActive(next.beam.running && (next.sequencers[0]?.running ?? false));
         instance.engine.setLayers(next.layers);
+        instance.setOutputVolume(settings.masterVolume);
+        instance.rebuildSonicCloud();
       }
+      setSettings((s) =>
+        s.viewMode === next.scene.view && s.pointSize === next.scene.pointSize
+          ? s
+          : { ...s, viewMode: next.scene.view, pointSize: next.scene.pointSize },
+      );
     },
     [settings.accent],
   );
